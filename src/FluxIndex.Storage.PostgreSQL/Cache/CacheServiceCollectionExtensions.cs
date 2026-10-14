@@ -169,6 +169,7 @@ internal sealed partial class PostgresCacheSchemaInitializer : IStorageInitializ
             CREATE UNLOGGED TABLE IF NOT EXISTS semantic_cache (
                 ""Id"" VARCHAR(100) PRIMARY KEY,
                 ""QueryHash"" VARCHAR(64) NOT NULL,
+                ""Scope"" VARCHAR(64) NOT NULL DEFAULT '',
                 ""Query"" TEXT NOT NULL,
                 ""Embedding"" vector({options.EmbeddingDimensions}),
                 ""Results"" JSONB,
@@ -192,6 +193,9 @@ internal sealed partial class PostgresCacheSchemaInitializer : IStorageInitializ
         ";
 
         context.Database.ExecuteSqlRaw(createTableSql);
+
+        // A cache table written before scoped entries has no Scope column; its rows are unscoped, which the default says.
+        context.Database.ExecuteSqlRaw(@"ALTER TABLE semantic_cache ADD COLUMN IF NOT EXISTS ""Scope"" VARCHAR(64) NOT NULL DEFAULT ''");
 
         // Tables created before these columns were TIMESTAMPTZ hold TIMESTAMP (without time zone), which reads back as
         // DateTime.Kind Unspecified — and Npgsql refuses to write that to the timestamptz the model maps, so every cache
@@ -223,6 +227,9 @@ internal sealed partial class PostgresCacheSchemaInitializer : IStorageInitializ
             var indexSql = $@"
                 CREATE INDEX IF NOT EXISTS idx_semantic_cache_query_hash
                 ON semantic_cache (""QueryHash"");
+
+                CREATE INDEX IF NOT EXISTS idx_semantic_cache_scope
+                ON semantic_cache (""Scope"");
 
                 CREATE INDEX IF NOT EXISTS idx_semantic_cache_expires
                 ON semantic_cache (""ExpiresAt"");

@@ -50,10 +50,12 @@ public partial class PostgresSemanticCache : ISemanticCacheService, IDisposable
     /// </remarks>
     public async Task<CachedSearchResult?> GetCachedResultAsync(
         string query,
+        string scope,
         float? similarityThreshold = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        ArgumentNullException.ThrowIfNull(scope);
         if (NoEmbeddingService.IsKeywordOnly(_embeddingService))
             return null;
 
@@ -70,6 +72,7 @@ public partial class PostgresSemanticCache : ISemanticCacheService, IDisposable
             // pgvector 코사인 유사도 검색 (1 - distance = similarity)
             var candidates = await context.SemanticCache
                 .Where(c => c.ExpiresAt > DateTime.UtcNow)
+                .Where(c => c.Scope == scope)
                 .Where(c => c.Embedding != null)
                 .Select(c => new
                 {
@@ -128,18 +131,20 @@ public partial class PostgresSemanticCache : ISemanticCacheService, IDisposable
     /// <remarks>Null <paramref name="ttl"/> uses <see cref="PostgresCacheOptions.DefaultExpiry"/>.</remarks>
     public async Task SetCachedResultAsync(
         string query,
+        string scope,
         IReadOnlyList<CacheDocumentChunk> results,
         SearchMetadata? metadata = null,
         TimeSpan? ttl = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(results);
         if (NoEmbeddingService.IsKeywordOnly(_embeddingService))
             return;
 
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        var queryHash = ComputeHash(query);
+        var queryHash = ComputeEntryHash(scope, query);
         var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
         var expiresAt = DateTime.UtcNow + (ttl ?? _options.DefaultExpiry);
         var resultsJson = SemanticCacheJson.SerializeResults(results);
@@ -165,6 +170,7 @@ public partial class PostgresSemanticCache : ISemanticCacheService, IDisposable
             {
                 Id = Guid.NewGuid().ToString(),
                 QueryHash = queryHash,
+                Scope = scope,
                 Query = query,
                 Embedding = new Vector(queryEmbedding),
                 ResultsJson = resultsJson,
@@ -296,6 +302,11 @@ public partial class PostgresSemanticCache : ISemanticCacheService, IDisposable
             $@"DELETE FROM semantic_cache WHERE ""Id"" = {entry.Id}", cancellationToken);
         LogUnreadableEntryRemoved(_logger, entry.QueryHash);
     }
+
+    // An unscoped entry keeps the hash an earlier release wrote, so its rows stay addressable; a scoped one hashes the
+    // scope with the query, so the same question in two scopes is two entries.
+    private static string ComputeEntryHash(string scope, string query)
+        => ComputeHash(scope.Length == 0 ? query : scope + "\n" + query);
 
     private static string ComputeHash(string input)
     {

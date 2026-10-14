@@ -45,6 +45,11 @@ public class PostgresCacheDbContext : DbContext, IEmbeddingDimensionsModel
                 .HasMaxLength(100)
                 .IsRequired();
 
+            entity.Property(e => e.Scope)
+                .HasMaxLength(64)
+                .IsRequired()
+                .HasDefaultValue(string.Empty);
+
             entity.Property(e => e.QueryHash)
                 .HasMaxLength(64)
                 .IsRequired();
@@ -68,6 +73,7 @@ public class PostgresCacheDbContext : DbContext, IEmbeddingDimensionsModel
 
             // 인덱스
             entity.HasIndex(e => e.QueryHash);
+            entity.HasIndex(e => e.Scope);
             entity.HasIndex(e => e.ExpiresAt);
             entity.HasIndex(e => e.LastAccessedAt);
             entity.HasIndex(e => e.HitCount);

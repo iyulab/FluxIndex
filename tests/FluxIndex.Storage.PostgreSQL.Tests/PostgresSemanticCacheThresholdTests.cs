@@ -66,12 +66,12 @@ public sealed class PostgresSemanticCacheThresholdTests : IAsyncLifetime
     {
         var ct = TestContext.Current.CancellationToken;
         await _cache.SetCachedResultAsync(
-            Stored, [new CacheDocumentChunk { Id = "c1", DocumentId = "d1", Content = "a relational database" }],
+            Stored, FilterScope.Unscoped, [new CacheDocumentChunk { Id = "c1", DocumentId = "d1", Content = "a relational database" }],
             cancellationToken: ct);
 
-        (await _cache.GetCachedResultAsync(Near, cancellationToken: ct)).Should().NotBeNull("0.9 clears the configured 0.85");
+        (await _cache.GetCachedResultAsync(Near, FilterScope.Unscoped, cancellationToken: ct)).Should().NotBeNull("0.9 clears the configured 0.85");
 
-        (await _cache.GetCachedResultAsync(Near, similarityThreshold: 0.95f, cancellationToken: ct)).Should().BeNull(
+        (await _cache.GetCachedResultAsync(Near, FilterScope.Unscoped, similarityThreshold: 0.95f, cancellationToken: ct)).Should().BeNull(
             "a threshold passed with the call overrides the configured one");
     }
 }

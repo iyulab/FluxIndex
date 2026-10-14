@@ -47,11 +47,11 @@ public sealed class SQLiteSemanticCacheStatisticsTests : IAsyncDisposable
     {
         var ct = TestContext.Current.CancellationToken;
 
-        (await _cache.GetCachedResultAsync("what is sqlite", cancellationToken: ct)).Should().BeNull();
-        await _cache.SetCachedResultAsync("what is sqlite", Answer("an embedded database"), cancellationToken: ct);
+        (await _cache.GetCachedResultAsync("what is sqlite", FilterScope.Unscoped, cancellationToken: ct)).Should().BeNull();
+        await _cache.SetCachedResultAsync("what is sqlite", FilterScope.Unscoped, Answer("an embedded database"), cancellationToken: ct);
 
-        var first = await _cache.GetCachedResultAsync("what is sqlite", cancellationToken: ct);
-        var second = await _cache.GetCachedResultAsync("what is sqlite", cancellationToken: ct);
+        var first = await _cache.GetCachedResultAsync("what is sqlite", FilterScope.Unscoped, cancellationToken: ct);
+        var second = await _cache.GetCachedResultAsync("what is sqlite", FilterScope.Unscoped, cancellationToken: ct);
 
         first!.HitCount.Should().Be(1);
         second!.HitCount.Should().Be(2, "the first hit's count was written, not only incremented in memory");

@@ -19,11 +19,11 @@ public class SemanticCacheThresholdTests
         var asked = false;
         float? threshold = null;
         var cache = Substitute.For<ISemanticCacheService>();
-        cache.GetCachedResultAsync(Arg.Any<string>(), Arg.Any<float?>(), Arg.Any<CancellationToken>())
+        cache.GetCachedResultAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<float?>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
                 asked = true;
-                threshold = call.ArgAt<float?>(1);
+                threshold = call.ArgAt<float?>(2);
                 return Task.FromResult<CachedSearchResult?>(null);
             });
 
@@ -49,4 +49,43 @@ public class SemanticCacheThresholdTests
     [Fact]
     public async Task SearchAsync_WithTheThresholdUnset_LetsTheCacheDecide()
         => (await ThresholdTheSearchAsksFor(_ => { })).Should().BeNull();
+
+    [Fact]
+    public async Task AFilteredSearch_IsLookedUpAndStoredUnderItsScope()
+    {
+        // A filtered search used to bypass the semantic cache; it now reads and fills its own scope's entries.
+        var lookedUp = new List<string>();
+        var stored = new List<string>();
+        var cache = Substitute.For<ISemanticCacheService>();
+        cache.GetCachedResultAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<float?>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                lookedUp.Add(call.ArgAt<string>(1));
+                return Task.FromResult<CachedSearchResult?>(null);
+            });
+        cache.SetCachedResultAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<Core.Domain.Models.CacheDocumentChunk>>(),
+                Arg.Any<SearchMetadata?>(), Arg.Any<TimeSpan?>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                stored.Add(call.ArgAt<string>(1));
+                return Task.CompletedTask;
+            });
+
+        using var context = (FluxIndexContext)FluxIndexContext.CreateBuilder()
+            .UseSQLiteInMemory()
+            .AddSQLiteStorage()
+            .UseInMemoryEmbedding()
+            .ConfigureServices(s => s.AddSingleton(cache))
+            .Build();
+        var ct = TestContext.Current.CancellationToken;
+        await context.Indexer.IndexDocumentAsync("fluxindex is a search library", "doc-1",
+            new Dictionary<string, object> { ["tenant"] = "a" }, cancellationToken: ct);
+
+        var filter = new Dictionary<string, object> { ["tenant"] = new[] { "a" } };
+        await context.SearchAsync("what is fluxindex", minScore: -1f, filter: filter, cancellationToken: ct);
+        await context.SearchAsync("what is fluxindex", minScore: -1f, cancellationToken: ct);
+
+        lookedUp.Should().Equal(FilterScope.Of(filter), FilterScope.Unscoped);
+        stored.Should().Equal(FilterScope.Of(filter), FilterScope.Unscoped);
+    }
 }

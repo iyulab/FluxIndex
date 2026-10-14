@@ -56,11 +56,11 @@ public sealed class SQLiteSemanticCacheThresholdTests
         var ct = TestContext.Current.CancellationToken;
         await using var provider = CacheProvider(similarityThreshold: 0.85f);
         var cache = provider.GetRequiredService<ISemanticCacheService>();
-        await cache.SetCachedResultAsync(Stored, Answer, cancellationToken: ct);
+        await cache.SetCachedResultAsync(Stored, FilterScope.Unscoped, Answer, cancellationToken: ct);
 
-        (await cache.GetCachedResultAsync(Near, cancellationToken: ct)).Should().NotBeNull("0.9 clears the configured 0.85");
+        (await cache.GetCachedResultAsync(Near, FilterScope.Unscoped, cancellationToken: ct)).Should().NotBeNull("0.9 clears the configured 0.85");
 
-        (await cache.GetCachedResultAsync(Near, similarityThreshold: 0.95f, cancellationToken: ct)).Should().BeNull(
+        (await cache.GetCachedResultAsync(Near, FilterScope.Unscoped, similarityThreshold: 0.95f, cancellationToken: ct)).Should().BeNull(
             "a threshold passed with the call overrides the configured one");
     }
 
@@ -71,10 +71,10 @@ public sealed class SQLiteSemanticCacheThresholdTests
         await using var provider = CacheProvider(similarityThreshold: null);
         provider.GetRequiredService<IOptions<SQLiteCacheOptions>>().Value.SimilarityThreshold.Should().Be(0.95f);
         var cache = provider.GetRequiredService<ISemanticCacheService>();
-        await cache.SetCachedResultAsync(Stored, Answer, cancellationToken: ct);
+        await cache.SetCachedResultAsync(Stored, FilterScope.Unscoped, Answer, cancellationToken: ct);
 
-        (await cache.GetCachedResultAsync(Near, cancellationToken: ct)).Should().BeNull("0.9 is below the default 0.95");
-        (await cache.GetCachedResultAsync(Stored, cancellationToken: ct)).Should().NotBeNull("positive control: the same query hits");
+        (await cache.GetCachedResultAsync(Near, FilterScope.Unscoped, cancellationToken: ct)).Should().BeNull("0.9 is below the default 0.95");
+        (await cache.GetCachedResultAsync(Stored, FilterScope.Unscoped, cancellationToken: ct)).Should().NotBeNull("positive control: the same query hits");
     }
 
     [Fact]

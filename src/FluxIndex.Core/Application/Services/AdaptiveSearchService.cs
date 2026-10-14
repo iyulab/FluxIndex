@@ -107,10 +107,12 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
             {
                 try
                 {
+                    // Adaptive search takes no metadata filter, so its entries are unscoped.
                     var cachedResult = await _semanticCache.GetCachedResultAsync(
                         query,
+                        FilterScope.Unscoped,
                         similarityThreshold: 0.95f,
-                        searchToken);
+                        cancellationToken: searchToken);
 
                     if (cachedResult != null)
                     {
@@ -302,6 +304,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                         // 시맨틱 캐시에 저장 (TTL 1시간)
                         await _semanticCache.SetCachedResultAsync(
                             query,
+                            FilterScope.Unscoped,
                             documentChunks.AsReadOnly(),
                             new SearchMetadata
                             {

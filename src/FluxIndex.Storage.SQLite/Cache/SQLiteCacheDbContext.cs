@@ -42,6 +42,13 @@ public class SQLiteCacheDbContext : DbContext
             entity.Property(e => e.Query)
                 .IsRequired();
 
+            // A default, so the schema provisioner adds the column to a cache table written by an earlier release
+            // (its rows are unscoped, which is what they were).
+            entity.Property(e => e.Scope)
+                .HasMaxLength(64)
+                .IsRequired()
+                .HasDefaultValue(string.Empty);
+
             entity.Property(e => e.EmbeddingJson)
                 .HasColumnType("TEXT");
 
@@ -53,6 +60,7 @@ public class SQLiteCacheDbContext : DbContext
 
             // 인덱스
             entity.HasIndex(e => e.QueryHash);
+            entity.HasIndex(e => e.Scope);
             entity.HasIndex(e => e.ExpiresAt);
             entity.HasIndex(e => e.LastAccessedAt);
             entity.HasIndex(e => e.HitCount);

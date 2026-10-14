@@ -84,7 +84,7 @@ public sealed class PostgresSemanticCacheSearchPathIntegrationTests : IAsyncLife
             await command.ExecuteNonQueryAsync(Ct);
         }
 
-        (await cache.GetCachedResultAsync("what is fluxindex", cancellationToken: Ct)).Should().BeNull();
+        (await cache.GetCachedResultAsync("what is fluxindex", FilterScope.Unscoped, cancellationToken: Ct)).Should().BeNull();
         (await cache.GetCacheStatisticsAsync(Ct)).TotalEntries.Should().Be(0, "an unreadable row is removed, not served or kept");
     }
 

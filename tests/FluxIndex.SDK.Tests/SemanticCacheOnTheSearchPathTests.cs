@@ -130,22 +130,28 @@ public class SemanticCacheOnTheSearchPathTests
     }
 
     [Fact]
-    public async Task SQLitePreset_AFilteredSearch_NeitherReadsNorFillsTheCache()
+    public async Task SQLitePreset_AFilteredSearch_IsCachedWithinItsScope_AndNeverAcrossScopes()
     {
         var counter = new SearchCounter();
         using var context = (FluxIndexContext)Build(counter);
         await context.Indexer.IndexDocumentAsync(
             "FluxIndex is a retrieval library", "doc-a", new Dictionary<string, object> { ["tenant"] = "a" }, Ct);
         await context.SearchAsync(Asked, cancellationToken: Ct);
+        counter.Searches.Should().Be(1);
 
-        var filter = new Dictionary<string, object> { ["tenant"] = "b" };
-        (await context.SearchAsync(AskedAgain, filter: filter, cancellationToken: Ct)).Should().BeEmpty(
-            "the cached results were not filtered for tenant b");
-        (await context.SearchAsync(AskedAgain, filter: filter, cancellationToken: Ct)).Should().BeEmpty();
-        counter.Searches.Should().Be(3, "neither filtered search was answered from the cache");
+        var tenantA = new Dictionary<string, object> { ["tenant"] = "a" };
+        (await context.SearchAsync(AskedAgain, filter: tenantA, cancellationToken: Ct)).Select(r => r.DocumentId).Should().Equal("doc-a");
+        counter.Searches.Should().Be(2, "the unfiltered entry does not answer a scoped search");
+        (await context.SearchAsync(Asked, filter: tenantA, cancellationToken: Ct)).Select(r => r.DocumentId).Should().Equal("doc-a");
+        counter.Searches.Should().Be(2, "the same scope asked again is answered from its own entry");
+
+        var tenantB = new Dictionary<string, object> { ["tenant"] = new[] { "b" } };
+        (await context.SearchAsync(AskedAgain, filter: tenantB, cancellationToken: Ct)).Should().BeEmpty(
+            "tenant a's cached results are not tenant b's");
+        counter.Searches.Should().Be(3);
 
         (await context.SearchAsync(AskedAgain, cancellationToken: Ct)).Select(r => r.DocumentId).Should().Equal("doc-a");
-        counter.Searches.Should().Be(3, "the unfiltered entry is still the one cached: the filtered searches stored nothing over it");
+        counter.Searches.Should().Be(3, "the unfiltered entry is still there: scoped entries are stored beside it, not over it");
     }
 
     [Fact]

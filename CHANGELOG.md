@@ -20,6 +20,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   results by query, scope and fusion settings, and every write through the indexer invalidates them. The reranker and the
   retrieval guard still run on every call. As on the vector path, a write that bypasses the indexer is not seen until the
   entry expires — turn the cache off with `EnableSearchCache = false` if you write to the store directly.
+- **A filtered `FluxIndexContext.SearchAsync` uses the semantic cache, within its scope.** It used to bypass the cache
+  whenever a filter was set — the cache entry did not record the filter — so a tenant- or collection-scoped app never had
+  a semantic cache. Entries now carry their scope: a lookup only matches entries stored under the same filter scope, so
+  two tenants asking the same question never share an answer, and the unfiltered entries stay where they were.
+  **Breaking** (implementers and direct callers of `ISemanticCacheService`): `GetCachedResultAsync` and
+  `SetCachedResultAsync` take a `scope` after the query — `FilterScope.Of(filters)`, or `FilterScope.Unscoped` for a
+  search without one. The SQLite and PostgreSQL caches add a `Scope` column to an existing `semantic_cache` table on
+  start-up (its rows are unscoped); Redis names a scoped entry by its scope and query and keeps unscoped keys as they were.
 - **`FilterScope.Of(filters)` names the scope a metadata filter selects** — the same name however the filter is written
   (key order, a scalar or a one-element list, duplicates), a different name for a different scope. The search cache keys
   by it; use it to key anything you cache per scope.

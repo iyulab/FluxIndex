@@ -46,10 +46,12 @@ public partial class SQLiteSemanticCache : ISemanticCacheService, IDisposable
     /// </remarks>
     public async Task<CachedSearchResult?> GetCachedResultAsync(
         string query,
+        string scope,
         float? similarityThreshold = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        ArgumentNullException.ThrowIfNull(scope);
         if (NoEmbeddingService.IsKeywordOnly(_embeddingService))
             return null;
 
@@ -63,7 +65,7 @@ public partial class SQLiteSemanticCache : ISemanticCacheService, IDisposable
             var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
             var candidates = (await context.SemanticCache
-                    .Where(c => c.ExpiresAt > DateTime.UtcNow)
+                    .Where(c => c.ExpiresAt > DateTime.UtcNow && c.Scope == scope)
                     .ToListAsync(cancellationToken))
                 .Select(entry => (Entry: entry, Similarity: CalculateCosineSimilarity(queryEmbedding, entry.GetEmbedding())))
                 .Where(x => x.Similarity >= threshold)
@@ -113,18 +115,20 @@ public partial class SQLiteSemanticCache : ISemanticCacheService, IDisposable
     /// <remarks>Null <paramref name="ttl"/> uses <see cref="SQLiteCacheOptions.DefaultExpiry"/>.</remarks>
     public async Task SetCachedResultAsync(
         string query,
+        string scope,
         IReadOnlyList<CacheDocumentChunk> results,
         SearchMetadata? metadata = null,
         TimeSpan? ttl = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(results);
         if (NoEmbeddingService.IsKeywordOnly(_embeddingService))
             return;
 
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        var queryHash = ComputeHash(query);
+        var queryHash = ComputeEntryHash(scope, query);
         var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
         var expiresAt = DateTime.UtcNow + (ttl ?? _options.DefaultExpiry);
         var resultsJson = SemanticCacheJson.SerializeResults(results);
@@ -150,6 +154,7 @@ public partial class SQLiteSemanticCache : ISemanticCacheService, IDisposable
             {
                 Id = Guid.NewGuid().ToString(),
                 QueryHash = queryHash,
+                Scope = scope,
                 Query = query,
                 ResultsJson = resultsJson,
                 MetadataJson = metadataJson,
@@ -291,6 +296,11 @@ public partial class SQLiteSemanticCache : ISemanticCacheService, IDisposable
         var denominator = MathF.Sqrt(normA) * MathF.Sqrt(normB);
         return denominator > 0 ? dotProduct / denominator : 0f;
     }
+
+    // An unscoped entry keeps the hash an earlier release wrote, so its rows stay addressable; a scoped one hashes the
+    // scope with the query, so the same question in two scopes is two entries.
+    private static string ComputeEntryHash(string scope, string query)
+        => ComputeHash(scope.Length == 0 ? query : scope + "\n" + query);
 
     private static string ComputeHash(string input)
     {

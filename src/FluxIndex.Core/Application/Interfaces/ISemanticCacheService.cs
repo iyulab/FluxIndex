@@ -22,6 +22,11 @@ public interface ISemanticCacheService
     /// enough. A failure to read the cache is a miss, not an exception.
     /// </summary>
     /// <param name="query">The search query.</param>
+    /// <param name="scope">
+    /// The scope the results belong to — <see cref="FilterScope.Of"/> of the search's metadata filter, or
+    /// <see cref="FilterScope.Unscoped"/> for a search without one. A lookup only matches entries stored under the same
+    /// scope, so a scoped search is never answered with another scope's results.
+    /// </param>
     /// <param name="similarityThreshold">
     /// Minimum cosine similarity (0.0 to 1.0) for a hit. Null uses the cache's configured threshold (its options'
     /// <c>SimilarityThreshold</c>).
@@ -29,6 +34,7 @@ public interface ISemanticCacheService
     /// <param name="cancellationToken">Cancels the lookup.</param>
     Task<CachedSearchResult?> GetCachedResultAsync(
         string query,
+        string scope,
         float? similarityThreshold = null,
         CancellationToken cancellationToken = default);
 
@@ -36,12 +42,18 @@ public interface ISemanticCacheService
     /// 검색 결과를 캐시에 저장
     /// </summary>
     /// <param name="query">원본 쿼리</param>
+    /// <param name="scope">
+    /// The scope the results belong to — <see cref="FilterScope.Of"/> of the search's metadata filter, or
+    /// <see cref="FilterScope.Unscoped"/> for a search without one. A lookup only matches entries stored under the same
+    /// scope, so a scoped search is never answered with another scope's results.
+    /// </param>
     /// <param name="results">검색 결과</param>
     /// <param name="metadata">추가 메타데이터</param>
     /// <param name="ttl">캐시 생존 시간 (기본값: 1시간)</param>
     /// <param name="cancellationToken">취소 토큰</param>
     Task SetCachedResultAsync(
         string query,
+        string scope,
         IReadOnlyList<CacheDocumentChunk> results,
         SearchMetadata? metadata = null,
         TimeSpan? ttl = null,

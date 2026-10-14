@@ -105,7 +105,7 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
         var query = "새로운 테스트 쿼리";
 
         // Act
-        var result = await _cacheService!.GetCachedResultAsync(query, cancellationToken: TestContext.Current.CancellationToken);
+        var result = await _cacheService!.GetCachedResultAsync(query, FilterScope.Unscoped, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Null(result);
@@ -131,14 +131,40 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
         };
 
         // Act
-        await _cacheService!.SetCachedResultAsync(query, results, cancellationToken: TestContext.Current.CancellationToken);
-        var cachedResult = await _cacheService.GetCachedResultAsync(query, 0.9f, TestContext.Current.CancellationToken);
+        await _cacheService!.SetCachedResultAsync(query, FilterScope.Unscoped, results, cancellationToken: TestContext.Current.CancellationToken);
+        var cachedResult = await _cacheService.GetCachedResultAsync(query, FilterScope.Unscoped, 0.9f, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(cachedResult);
         Assert.Equal(query, cachedResult.CachedQuery);
         Assert.Single(cachedResult.Results);
         Assert.True(cachedResult.SimilarityScore >= 0.9f);
+    }
+
+    [Fact]
+    public async Task TheSameQuestionInTwoScopes_IsAnsweredFromItsOwnScope()
+    {
+        SkipIfDockerNotAvailable();
+        var ct = TestContext.Current.CancellationToken;
+        var query = "scoped question";
+        var tenantA = FilterScope.Of(new Dictionary<string, object> { ["tenant"] = "a" });
+        var tenantB = FilterScope.Of(new Dictionary<string, object> { ["tenant"] = "b" });
+
+        await _cacheService!.SetCachedResultAsync(query, tenantA, [new CacheDocumentChunk { Id = "a", DocumentId = "doc-a", Content = "tenant a" }], cancellationToken: ct);
+        await _cacheService.SetCachedResultAsync(query, tenantB, [new CacheDocumentChunk { Id = "b", DocumentId = "doc-b", Content = "tenant b" }], cancellationToken: ct);
+
+        var a = await _cacheService.GetCachedResultAsync(query, tenantA, cancellationToken: ct);
+        var b = await _cacheService.GetCachedResultAsync(query, tenantB, cancellationToken: ct);
+
+        Assert.Equal("doc-a", Assert.Single(a!.Results).DocumentId);
+        Assert.Equal("doc-b", Assert.Single(b!.Results).DocumentId);
+        Assert.Equal(query, a.CachedQuery);
+        Assert.Null(await _cacheService.GetCachedResultAsync(query, FilterScope.Unscoped, cancellationToken: ct));
+
+        // Invalidation by pattern matches the query, whichever scope it is stored in.
+        await _cacheService.InvalidateCacheAsync(query, ct);
+        Assert.Null(await _cacheService.GetCachedResultAsync(query, tenantA, cancellationToken: ct));
+        Assert.Null(await _cacheService.GetCachedResultAsync(query, tenantB, cancellationToken: ct));
     }
 
     [Fact]
@@ -165,11 +191,11 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
         var query = "무효화 테스트 쿼리";
         var results = new List<CacheDocumentChunk> { new CacheDocumentChunk { Content = "내용", ChunkIndex = 0, DocumentId = "doc1", Id = "chunk1" } };
 
-        await _cacheService!.SetCachedResultAsync(query, results, cancellationToken: TestContext.Current.CancellationToken);
+        await _cacheService!.SetCachedResultAsync(query, FilterScope.Unscoped, results, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
         await _cacheService.InvalidateCacheAsync("무효화*", TestContext.Current.CancellationToken);
-        var cachedResult = await _cacheService.GetCachedResultAsync(query, cancellationToken: TestContext.Current.CancellationToken);
+        var cachedResult = await _cacheService.GetCachedResultAsync(query, FilterScope.Unscoped, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Null(cachedResult);

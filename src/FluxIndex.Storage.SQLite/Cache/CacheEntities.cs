@@ -9,6 +9,9 @@ public class SemanticCacheEntity
 {
     public string Id { get; set; } = string.Empty;
     public string QueryHash { get; set; } = string.Empty;
+
+    /// <summary>The scope (<c>FilterScope.Of</c>) the results belong to; empty for a search without a filter.</summary>
+    public string Scope { get; set; } = string.Empty;
     public string Query { get; set; } = string.Empty;
     public string EmbeddingJson { get; set; } = "[]";
 

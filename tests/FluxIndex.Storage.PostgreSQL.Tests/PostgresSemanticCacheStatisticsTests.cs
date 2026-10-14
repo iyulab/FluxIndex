@@ -63,11 +63,11 @@ public sealed class PostgresSemanticCacheStatisticsTests : IAsyncLifetime
     {
         var ct = TestContext.Current.CancellationToken;
 
-        (await _cache.GetCachedResultAsync("what is postgres", cancellationToken: ct)).Should().BeNull();
-        await _cache.SetCachedResultAsync("what is postgres", Answer("a relational database"), cancellationToken: ct);
+        (await _cache.GetCachedResultAsync("what is postgres", FilterScope.Unscoped, cancellationToken: ct)).Should().BeNull();
+        await _cache.SetCachedResultAsync("what is postgres", FilterScope.Unscoped, Answer("a relational database"), cancellationToken: ct);
 
-        var first = await _cache.GetCachedResultAsync("what is postgres", cancellationToken: ct);
-        var second = await _cache.GetCachedResultAsync("what is postgres", cancellationToken: ct);
+        var first = await _cache.GetCachedResultAsync("what is postgres", FilterScope.Unscoped, cancellationToken: ct);
+        var second = await _cache.GetCachedResultAsync("what is postgres", FilterScope.Unscoped, cancellationToken: ct);
 
         first!.HitCount.Should().Be(1);
         second!.HitCount.Should().Be(2, "the first hit's count was written, not only incremented in memory");
@@ -98,21 +98,63 @@ public sealed class PostgresSemanticCacheStatisticsTests : IAsyncLifetime
         }
 
         _provider.GetRequiredService<PostgresCacheSchemaInitializer>().InitializeSync(_provider);
-        await _cache.SetCachedResultAsync("legacy table", Answer("still served"), cancellationToken: ct);
+        await _cache.SetCachedResultAsync("legacy table", FilterScope.Unscoped, Answer("still served"), cancellationToken: ct);
 
-        (await _cache.GetCachedResultAsync("legacy table", cancellationToken: ct))!.HitCount.Should().Be(1);
+        (await _cache.GetCachedResultAsync("legacy table", FilterScope.Unscoped, cancellationToken: ct))!.HitCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task TheSameQuestionInTwoScopes_IsAnsweredFromItsOwnScope()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var tenantA = FilterScope.Of(new Dictionary<string, object> { ["tenant"] = "a" });
+        var tenantB = FilterScope.Of(new Dictionary<string, object> { ["tenant"] = "b" });
+
+        await _cache.SetCachedResultAsync("what is postgres", tenantA, Answer("tenant a"), cancellationToken: ct);
+        await _cache.SetCachedResultAsync("what is postgres", tenantB, Answer("tenant b"), cancellationToken: ct);
+
+        (await _cache.GetCachedResultAsync("what is postgres", tenantA, cancellationToken: ct))!.Results.Single().Content.Should().Be("tenant a");
+        (await _cache.GetCachedResultAsync("what is postgres", tenantB, cancellationToken: ct))!.Results.Single().Content.Should().Be("tenant b");
+        (await _cache.GetCachedResultAsync("what is postgres", FilterScope.Unscoped, cancellationToken: ct)).Should().BeNull(
+            "an unscoped search is a scope of its own");
+    }
+
+    [Fact]
+    public async Task ATableCreatedBeforeScopes_GainsTheColumn_AndItsRowsStayUnscopedHits()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _cache.SetCachedResultAsync("legacy question", FilterScope.Unscoped, Answer("legacy answer"), cancellationToken: ct);
+
+        // Back to the shape earlier releases created: no Scope column.
+        await using (var connection = new Npgsql.NpgsqlConnection(_container.GetConnectionString()))
+        {
+            await connection.OpenAsync(ct);
+            await using var command = new Npgsql.NpgsqlCommand(
+                """
+                DROP INDEX IF EXISTS idx_semantic_cache_scope;
+                ALTER TABLE semantic_cache DROP COLUMN "Scope";
+                """, connection);
+            await command.ExecuteNonQueryAsync(ct);
+        }
+
+        _provider.GetRequiredService<PostgresCacheSchemaInitializer>().InitializeSync(_provider);
+
+        (await _cache.GetCachedResultAsync("legacy question", FilterScope.Unscoped, cancellationToken: ct))!
+            .Results.Single().Content.Should().Be("legacy answer", "a row written before scopes is an unscoped entry");
+        (await _cache.GetCachedResultAsync("legacy question", FilterScope.Of(new Dictionary<string, object> { ["tenant"] = "a" }), cancellationToken: ct))
+            .Should().BeNull();
     }
 
     [Fact]
     public async Task ConcurrentLookups_CountEveryHitAndMiss()
     {
         var ct = TestContext.Current.CancellationToken;
-        await _cache.SetCachedResultAsync("cached question", Answer("cached answer"), cancellationToken: ct);
+        await _cache.SetCachedResultAsync("cached question", FilterScope.Unscoped, Answer("cached answer"), cancellationToken: ct);
 
         // 16 overlapping callers on one cache instance, half hitting and half missing (the miss path embeds a
         // different vector so the similarity search finds nothing).
         await Task.WhenAll(Enumerable.Range(0, 16).Select(i => Task.Run(
-            () => _cache.GetCachedResultAsync("cached question", cancellationToken: ct), ct)));
+            () => _cache.GetCachedResultAsync("cached question", FilterScope.Unscoped, cancellationToken: ct), ct)));
 
         (await _cache.GetCacheStatisticsAsync(ct)).CacheHits.Should().Be(16,
             "the statistics row is updated atomically, so no concurrent increment is lost");

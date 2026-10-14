@@ -220,14 +220,14 @@ public class AdaptiveSearchServiceTests
             }
         };
 
-        _mockSemanticCache.GetCachedResultAsync(query, Arg.Any<float?>(), Arg.Any<CancellationToken>())
+        _mockSemanticCache.GetCachedResultAsync(query, FilterScope.Unscoped, Arg.Any<float?>(), Arg.Any<CancellationToken>())
             .Returns(
                 (FluxIndex.Core.Application.Interfaces.CachedSearchResult?)null,  // First call: cache miss
                 cachedResult);  // Second call: cache hit
 
         // Setup SetCachedResultAsync to complete successfully
         _mockSemanticCache.SetCachedResultAsync(
-            Arg.Any<string>(),
+            Arg.Any<string>(), Arg.Any<string>(),
             Arg.Any<IReadOnlyList<FluxIndex.Core.Domain.Models.CacheDocumentChunk>>(),
             Arg.Any<FluxIndex.Core.Application.Interfaces.SearchMetadata>(),
             Arg.Any<TimeSpan?>(),

@@ -82,8 +82,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   `AddPostgreSQLStorage()` puts it on the selected store's database; for Redis, `ConfigureServices(s =>
   s.AddRedisSemanticCache(...))` (Provider `"Redis"`, or `"None"` to use whatever is registered). Matching is approximate:
   a query at cosine similarity ≥ `SimilarityThreshold` (0.95 by default) to an earlier one gets that query's results, so
-  two different questions can share an answer. Filtered searches bypass it, every indexer write empties it, and `Build()`
-  refuses an opted-in provider nobody registered or two registered caches.
+  two different questions can share an answer — within one scope only: a filtered search reads and fills the entries of
+  its filter's scope (`FilterScope.Of`), so two tenants asking the same question never share an answer. Every indexer
+  write empties it, and `Build()` refuses an opted-in provider nobody registered or two registered caches.
 - **Document processing** — PDF/DOCX/TXT via FileFlux, web pages via WebFlux (`FluxIndex.Integrations.*`, opt-in):
   `AddFileFluxIntegration` (builder `UseFileFlux`) for parsing and chunking — `FileFluxOptions.EnableMetadataEnrichment` adds AI
   metadata (see «AI metadata on indexing») to each indexed file, and `FileFluxOptions.EnableLlmRefine` (off by default) lets

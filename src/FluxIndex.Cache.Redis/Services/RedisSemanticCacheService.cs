@@ -34,6 +34,10 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
     private const string STATS_KEY = "cache_stats";
     private const string QUERY_INDEX_KEY = "query_index";
 
+    // An entry is named by its query, prefixed with its scope (FilterScope.Of — 64 hex digits) and this separator when the
+    // search had a filter. An unscoped entry keeps the bare query an earlier release wrote.
+    private const char SCOPE_SEPARATOR = '\u001f';
+
     public RedisSemanticCacheService(
         IConnectionMultiplexer redis,
         IEmbeddingService embeddingService,
@@ -57,11 +61,13 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
     /// <remarks>Null <paramref name="similarityThreshold"/> uses <see cref="RedisSemanticCacheOptions.SimilarityThreshold"/>.</remarks>
     public async Task<CachedSearchResult?> GetCachedResultAsync(
         string query,
+        string scope,
         float? similarityThreshold = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
             throw new ArgumentException("Query cannot be empty", nameof(query));
+        ArgumentNullException.ThrowIfNull(scope);
 
         if (NoEmbeddingService.IsKeywordOnly(_embeddingService))
             return null;
@@ -79,7 +85,7 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
             var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
             // 2. 캐시된 쿼리들의 임베딩과 유사도 계산
-            var bestMatch = await FindBestMatchAsync(queryEmbedding, threshold, cancellationToken);
+            var bestMatch = await FindBestMatchAsync(queryEmbedding, scope, threshold, cancellationToken);
 
             if (bestMatch == null)
             {
@@ -126,6 +132,7 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
     /// </summary>
     public async Task SetCachedResultAsync(
         string query,
+        string scope,
         IReadOnlyList<CacheDocumentChunk> results,
         SearchMetadata? metadata = null,
         TimeSpan? ttl = null,
@@ -133,6 +140,7 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
     {
         if (string.IsNullOrWhiteSpace(query))
             throw new ArgumentException("Query cannot be empty", nameof(query));
+        ArgumentNullException.ThrowIfNull(scope);
 
         ArgumentNullException.ThrowIfNull(results);
 
@@ -166,17 +174,18 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
             var expiry = ttl ?? _options.DefaultTtl;
 
             // 캐시 결과 저장
-            var cacheKey = CACHE_KEY_PREFIX + query;
+            var entry = EntryName(scope, query);
+            var cacheKey = CACHE_KEY_PREFIX + entry;
             var resultJson = JsonSerializer.Serialize(cachedResult, GetJsonOptions());
             tasks.Add(_database.StringSetAsync(cacheKey, resultJson, expiry));
 
             // 임베딩 벡터 저장
-            var embeddingKey = EMBEDDING_KEY_PREFIX + query;
+            var embeddingKey = EMBEDDING_KEY_PREFIX + entry;
             var embeddingBytes = SerializeEmbedding(queryEmbedding);
             tasks.Add(_database.StringSetAsync(embeddingKey, embeddingBytes, expiry));
 
             // 쿼리 인덱스에 추가
-            tasks.Add(_database.SetAddAsync(QUERY_INDEX_KEY, query));
+            tasks.Add(_database.SetAddAsync(QUERY_INDEX_KEY, entry));
 
             await Task.WhenAll(tasks);
 
@@ -209,8 +218,11 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
 
         try
         {
-            var keys = _server.Keys(_database.Database, CACHE_KEY_PREFIX + pattern, pageSize: 1000);
-            var keyArray = keys.ToArray();
+            // The pattern is matched against the query: an unscoped entry is named by it, a scoped one by its scope and it.
+            var keyArray = _server.Keys(_database.Database, CACHE_KEY_PREFIX + pattern, pageSize: 1000)
+                .Concat(_server.Keys(_database.Database, CACHE_KEY_PREFIX + "*" + SCOPE_SEPARATOR + pattern, pageSize: 1000))
+                .Distinct()
+                .ToArray();
 
             if (keyArray.Length == 0)
                 return;
@@ -402,10 +414,13 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
     /// </summary>
     private async Task<(string CachedQuery, float Similarity)?> FindBestMatchAsync(
         float[] queryEmbedding,
+        string scope,
         float similarityThreshold,
         CancellationToken cancellationToken)
     {
-        var cachedQueries = await _database.SetMembersAsync(QUERY_INDEX_KEY);
+        var cachedQueries = (await _database.SetMembersAsync(QUERY_INDEX_KEY))
+            .Where(member => IsInScope((string?)member ?? string.Empty, scope))
+            .ToArray();
         if (cachedQueries.Length == 0)
             return null;
 
@@ -448,6 +463,19 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
 
         return bestMatch.Similarity >= similarityThreshold ? bestMatch : null;
     }
+
+    private static string EntryName(string scope, string query)
+        => scope.Length == 0 ? query : scope + SCOPE_SEPARATOR + query;
+
+    private static bool IsInScope(string entry, string scope)
+        => scope.Length == 0
+            ? !IsScoped(entry)
+            : entry.Length > scope.Length && entry[scope.Length] == SCOPE_SEPARATOR && entry.StartsWith(scope, StringComparison.Ordinal);
+
+    private static bool IsScoped(string entry)
+        => entry.Length > 64 && entry[64] == SCOPE_SEPARATOR && !entry.AsSpan(0, 64).ContainsAnyExcept(s_lowerHex);
+
+    private static readonly System.Buffers.SearchValues<char> s_lowerHex = System.Buffers.SearchValues.Create("0123456789abcdef");
 
     /// <summary>
     /// 캐시된 결과 로드

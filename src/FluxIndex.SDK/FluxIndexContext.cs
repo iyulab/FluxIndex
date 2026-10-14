@@ -123,12 +123,13 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     /// </summary>
     /// <remarks>
     /// With a semantic cache registered (<see cref="ISemanticCacheService"/> — opt-in through
-    /// <c>SemanticCacheOptions.Provider</c> or <c>ConfigureServices</c>), a search without a <paramref name="filter"/> is
-    /// first looked up there: the results stored for the most
-    /// similar earlier query answer it when that query asked for at least as many results with a minimum score no
-    /// higher, trimmed to this request. Otherwise the search runs and its results are stored. A filtered search
-    /// neither reads nor fills the cache, every indexer write empties it, and a cache that fails is skipped, never the
-    /// search. Cached results carry no vector/keyword sub-scores or highlights.
+    /// <c>SemanticCacheOptions.Provider</c> or <c>ConfigureServices</c>), a search is first looked up there: the results
+    /// stored for the most similar earlier query <em>in the same scope</em> answer it when that query asked for at least as
+    /// many results with a minimum score no higher, trimmed to this request. Otherwise the search runs and its results are
+    /// stored. The scope is the <paramref name="filter"/>'s (<see cref="FilterScope.Of"/>): a filtered search reads and
+    /// fills only its scope's entries, so two tenants asking the same question never share an answer. Every indexer write
+    /// empties the cache, and a cache that fails is skipped, never the search. Cached results carry no vector/keyword
+    /// sub-scores or highlights.
     /// </remarks>
     public async Task<IEnumerable<SearchResult>> SearchAsync(
         string query,
@@ -142,8 +143,9 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
 
         var startTime = DateTime.UtcNow;
 
-        // The cache entry records neither the filter nor anything that could check it, so filtered searches bypass it.
-        var semanticCache = filter is { Count: > 0 } ? null : _cacheService;
+        // Entries are partitioned by the filter's scope, so a filtered search is cached within its scope only.
+        var semanticCache = _cacheService;
+        var scope = FilterScope.Of(filter);
         var effectiveMaxResults = maxResults ?? _retriever.Options.DefaultMaxResults;
         var effectiveMinScore = minScore ?? _retriever.Options.DefaultMinScore;
 
@@ -152,7 +154,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
             // 1. 시맨틱 캐시 확인
             if (semanticCache != null)
             {
-                var cachedResult = await LookUpSemanticCacheAsync(semanticCache, query, cancellationToken);
+                var cachedResult = await LookUpSemanticCacheAsync(semanticCache, query, scope, cancellationToken);
                 var usable = cachedResult is not null
                     && CanAnswer(cachedResult, effectiveMaxResults, effectiveMinScore);
                 if (cachedResult != null && usable)
@@ -192,7 +194,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
             if (semanticCache != null && sdkResults.Count != 0)
             {
                 await StoreInSemanticCacheAsync(
-                    semanticCache, query, sdkResults, effectiveMaxResults, effectiveMinScore, cancellationToken);
+                    semanticCache, query, scope, sdkResults, effectiveMaxResults, effectiveMinScore, cancellationToken);
             }
 
             var duration = DateTime.UtcNow - startTime;
@@ -845,11 +847,11 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     /// </summary>
     /// <summary>A semantic cache lookup that cannot fail the search: an error is logged and answered as a miss.</summary>
     private async Task<CachedSearchResult?> LookUpSemanticCacheAsync(
-        ISemanticCacheService cache, string query, CancellationToken cancellationToken)
+        ISemanticCacheService cache, string query, string scope, CancellationToken cancellationToken)
     {
         try
         {
-            return await cache.GetCachedResultAsync(query, _cacheSimilarityThreshold, cancellationToken);
+            return await cache.GetCachedResultAsync(query, scope, _cacheSimilarityThreshold, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -865,6 +867,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     private async Task StoreInSemanticCacheAsync(
         ISemanticCacheService cache,
         string query,
+        string scope,
         IReadOnlyList<SearchResult> results,
         int maxResults,
         float minScore,
@@ -893,7 +896,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
 
         try
         {
-            await cache.SetCachedResultAsync(query, chunks, metadata, ttl: null, cancellationToken);
+            await cache.SetCachedResultAsync(query, scope, chunks, metadata, ttl: null, cancellationToken);
             LogCachedSearchResults(_logger, query, chunks.Count);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
