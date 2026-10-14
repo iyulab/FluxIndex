@@ -55,7 +55,8 @@ public static class ServiceCollectionExtensions
         var options = new LMSupplyEmbeddingOptions();
         configure(options);
 
-        services.AddSingleton<IEmbeddingService>(_ => new LMSupplyEmbeddingService(options));
+        services.AddSingleton<IEmbeddingService>(sp => new LMSupplyEmbeddingService(
+            options, sp.GetService<ILoggerFactory>()?.CreateLogger<LMSupplyEmbeddingService>() ?? NullLogger<LMSupplyEmbeddingService>.Instance));
 
         // UseVectorSpaceRevision needs the revision before anything reads the identity. It is read from the cached
         // files at host start (LMSupply 0.72.0) and the model loads on first use; only when the files cannot answer

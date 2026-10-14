@@ -2,6 +2,8 @@ using FluxIndex.Core.Application.Services.Base;
 using LMSupply;
 using LMSupply.Embedder;
 using LMSupply.Embedder.Utils;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FluxIndex.Providers.LMSupply.Services;
 
@@ -24,7 +26,7 @@ namespace FluxIndex.Providers.LMSupply.Services;
 /// and verified against the loaded model: a mismatch fails the load instead of silently splitting the index.
 /// </para>
 /// </remarks>
-public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDisposable, IDisposable, ILazilyLoadedModel
+public sealed partial class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDisposable, IDisposable, ILazilyLoadedModel
 {
     private readonly IEmbeddingModel? _eager;
     private readonly LazyModelHandle<IEmbeddingModel>? _handle;
@@ -65,10 +67,27 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     {
     }
 
+    /// <summary>
+    /// Initializes a lazily loading instance that logs, when the model loads, which execution providers it runs on — so a
+    /// host sees an embedder that fell back to the CPU (<c>AddLMSupplyEmbedding</c> passes the container's
+    /// logger).
+    /// </summary>
+    /// <param name="options">See <see cref="LMSupplyEmbeddingService(LMSupplyEmbeddingOptions)"/>.</param>
+    /// <param name="logger">Receives the load report.</param>
+    public LMSupplyEmbeddingService(LMSupplyEmbeddingOptions options, ILogger<LMSupplyEmbeddingService> logger)
+        : this(options, preRead: null, logger)
+    {
+    }
+
     /// <param name="options">See the public constructor.</param>
     /// <param name="preRead">Replaces the files-only read (<c>LocalEmbedder.GetRetrievalVectorSpaceRevisionAsync</c>) — tests only.</param>
-    internal LMSupplyEmbeddingService(LMSupplyEmbeddingOptions options, Func<CancellationToken, Task<string?>>? preRead)
+    /// <param name="logger">Receives the load report.</param>
+    internal LMSupplyEmbeddingService(
+        LMSupplyEmbeddingOptions options,
+        Func<CancellationToken, Task<string?>>? preRead,
+        ILogger<LMSupplyEmbeddingService>? logger = null)
     {
+        var log = (ILogger?)logger ?? NullLogger.Instance;
         ArgumentNullException.ThrowIfNull(options);
         ArgumentException.ThrowIfNullOrWhiteSpace(options.ModelId);
 
@@ -88,6 +107,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
                 VerifyAnnouncedIdentity(model);
                 VerifyPreReadRevision(model);
                 VerifyAnnouncedPrefixes(model);
+                ReportProviders(log, model);
                 return model;
             },
             options.Progress,
@@ -126,6 +146,33 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     public bool UseVectorSpaceRevision { get; init; }
 
     private IEmbeddingModel? LoadedModel => _eager ?? _handle!.LoadedModel;
+
+    /// <summary>
+    /// The execution providers the loaded model runs on (LMSupply's <c>ActiveProviders</c>, e.g.
+    /// <c>CUDAExecutionProvider</c>, <c>CPUExecutionProvider</c>, <c>llama-server-Cuda12</c>); empty before the load.
+    /// </summary>
+    public IReadOnlyList<string> ActiveProviders => LoadedModel?.ActiveProviders ?? [];
+
+    /// <summary>
+    /// Logs where the model runs once it has loaded: a warning when a GPU provider was asked for by name and the model
+    /// runs without one (LMSupply falls back to the CPU and says so only through <c>Trace</c>), information otherwise.
+    /// </summary>
+    internal static void ReportProviders(ILogger logger, IEmbeddingModel model)
+    {
+        var providers = string.Join(", ", model.ActiveProviders);
+        if (model.RequestedProvider is not (ExecutionProvider.Auto or ExecutionProvider.Cpu) && !model.IsGpuActive)
+            LogRanWithoutRequestedProvider(logger, model.ModelId, model.RequestedProvider, providers);
+        else
+            LogLoaded(logger, model.ModelId, providers, model.RequestedProvider);
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "LMSupply embedding model {ModelId} loaded on {Providers} (requested {Requested})")]
+    private static partial void LogLoaded(ILogger logger, string modelId, string providers, ExecutionProvider requested);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "LMSupply embedding model {ModelId} was asked to run on {Requested} but runs on {Providers}; LMSupply's Trace output says why")]
+    private static partial void LogRanWithoutRequestedProvider(ILogger logger, string modelId, ExecutionProvider requested, string providers);
 
     /// <inheritdoc />
     /// <remarks>
