@@ -22,6 +22,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   analyzer and is rebuilt once on first open. `ITextAnalyzer` gains `Identity` — migration: a custom analyzer returns a
   stable name and changes it whenever its output would change.
 
+### Added
+- **`AddLMSupplyEmbedding` logs where the embedding model runs when it loads**, through the container's logger: the
+  active providers at Information, and a Warning when a GPU provider was asked for by name and the model runs without
+  one. LMSupply reports a fallback to the CPU only through `Trace`, which a host logging through
+  `Microsoft.Extensions.Logging` does not see. `LMSupplyEmbeddingService.ActiveProviders` gives the same list.
+
 ### Fixed
 - **`HybridSearchOptions.EnableDynamicAlphaTuning` runs Dynamic Alpha Tuning in an SDK context.** The builder did not
   register the tuning service, and with one constructor per combination of optional collaborators a container picked the
