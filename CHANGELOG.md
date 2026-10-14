@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.94.0] - 2026-10-15
 
 ### Added
 - **`SearchOptions.MetadataFilters` takes a collection, matching any of its elements.** A search scoped to «these
