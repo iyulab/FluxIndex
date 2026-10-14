@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.93.0] - 2026-10-15
 
 ### Changed
 - **Breaking** — **The keyword index splits Korean, Japanese and Chinese text into character bigrams by default.**
@@ -55,6 +55,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Dependencies
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.120.0 -> 0.121.0, `LMSupply.Generator` 0.120.0 -> 0.121.0, `LMSupply.Reranker` 0.120.0 -> 0.121.0.
+- Re-pinned sibling package(s) `FileFlux` 0.62.0 -> 0.63.0.
 
 ## [0.92.0] - 2026-10-14
 
