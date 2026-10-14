@@ -22,6 +22,17 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   analyzer and is rebuilt once on first open. `ITextAnalyzer` gains `Identity` — migration: a custom analyzer returns a
   stable name and changes it whenever its output would change.
 
+### Fixed
+- **`HybridSearchOptions.EnableDynamicAlphaTuning` runs Dynamic Alpha Tuning in an SDK context.** The builder did not
+  register the tuning service, and with one constructor per combination of optional collaborators a container picked the
+  quantizer-only constructor whenever no tuning service was registered — so the option fell back to the query heuristic,
+  and `AppliedFusion.SelectedBy` said `QueryHeuristic`. The builder now registers it, the service has one constructor
+  whose quantizer and tuning service are optional, and a service without a tuning service throws
+  `InvalidOperationException` when the option is on instead of ignoring it. **Breaking** (direct construction): the
+  constructor overloads that took the quantizer before the logger are replaced by
+  `HybridSearchService(vectorStore, keywordSearch, embedding, logger, quantizer = null, dynamicFusion = null)`;
+  migration: move the logger before them. The four-argument constructor is unchanged.
+
 ## [0.92.0] - 2026-10-14
 
 ### Changed

@@ -27,40 +27,31 @@ public partial class HybridSearchService : IHybridSearchService
     private readonly ILogger<HybridSearchService> _logger;
 
     /// <summary>
-    /// 기본 생성자 (양자화 없음)
+    /// Creates the service without quantized search or Dynamic Alpha Tuning.
     /// </summary>
     public HybridSearchService(
         IVectorStore vectorStore,
         IKeywordSearchService keywordSearchService,
         IEmbeddingService embeddingService,
         ILogger<HybridSearchService> logger)
-        : this(vectorStore, keywordSearchService, embeddingService, null, null, logger)
+        : this(vectorStore, keywordSearchService, embeddingService, logger, quantizer: null, dynamicFusion: null)
     {
     }
 
     /// <summary>
-    /// 양자화 지원 생성자
+    /// Creates the service with the optional collaborators a container provides: a <paramref name="quantizer"/> for
+    /// quantized two-stage search and a <paramref name="dynamicFusion"/> service for
+    /// <see cref="HybridSearchOptions.EnableDynamicAlphaTuning"/>. One constructor takes both, so a container resolves
+    /// whichever of them is registered; with one constructor per combination it picked the longest one it could fill
+    /// and dropped Dynamic Alpha Tuning whenever no quantizer was registered.
     /// </summary>
     public HybridSearchService(
         IVectorStore vectorStore,
         IKeywordSearchService keywordSearchService,
         IEmbeddingService embeddingService,
-        IVectorQuantizer? quantizer,
-        ILogger<HybridSearchService> logger)
-        : this(vectorStore, keywordSearchService, embeddingService, quantizer, null, logger)
-    {
-    }
-
-    /// <summary>
-    /// Dynamic Alpha Tuning 지원 생성자 (권장)
-    /// </summary>
-    public HybridSearchService(
-        IVectorStore vectorStore,
-        IKeywordSearchService keywordSearchService,
-        IEmbeddingService embeddingService,
-        IVectorQuantizer? quantizer,
-        IDynamicFusionService? dynamicFusion,
-        ILogger<HybridSearchService> logger)
+        ILogger<HybridSearchService> logger,
+        IVectorQuantizer? quantizer = null,
+        IDynamicFusionService? dynamicFusion = null)
     {
         _vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         _keywordSearchService = keywordSearchService ?? throw new ArgumentNullException(nameof(keywordSearchService));
@@ -512,8 +503,15 @@ public partial class HybridSearchService : IHybridSearchService
                 FusionSelection.Caller));
         }
 
-        if (options.EnableDynamicAlphaTuning && _dynamicFusion != null)
+        if (options.EnableDynamicAlphaTuning)
         {
+            // Asked for and unavailable: falling back to the heuristic here ran the default fusion under an option
+            // that said otherwise, and nothing told the caller.
+            if (_dynamicFusion is null)
+                throw new InvalidOperationException(
+                    "HybridSearchOptions.EnableDynamicAlphaTuning is set, but this hybrid search service has no IDynamicFusionService. " +
+                    "Register one with services.AddDynamicAlphaTuning() (the SDK builder and AddFluxIndexCore register it), or pass one to the constructor.");
+
             var datConfig = await _dynamicFusion.CalculateDynamicWeightsAsync(query, cancellationToken);
             if (_logger.IsEnabled(LogLevel.Information))
                 LogHybridSearch15(_logger, datConfig.VectorWeight, datConfig.SparseWeight, datConfig.RecommendedFusion, datConfig.QueryType);

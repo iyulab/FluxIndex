@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using FluxIndex.Core.Application.Services;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
@@ -43,8 +44,7 @@ public class HybridSearchFusionSelectionTests
     }
 
     private HybridSearchService CreateService(bool withDynamicFusion = false) =>
-        new(_vectorStore, _keywordSearch, _embedding, null, withDynamicFusion ? _dynamicFusion : null,
-            NullLogger<HybridSearchService>.Instance);
+        new(_vectorStore, _keywordSearch, _embedding, NullLogger<HybridSearchService>.Instance, null, withDynamicFusion ? _dynamicFusion : null);
 
     [Fact]
     public async Task SearchAsync_CallerSetsMethodAndWeights_TheyAreAppliedAsGiven()
@@ -106,6 +106,40 @@ public class HybridSearchFusionSelectionTests
 
         Assert.All(results, r => Assert.Equal(
             new AppliedFusion(FusionMethod.WeightedSum, 0.35, 0.65, 60, FusionSelection.DynamicAlphaTuning), r.Fusion));
+    }
+
+    [Fact]
+    public async Task SearchAsync_DynamicAlphaTuningRequestedWithoutTheService_Throws()
+    {
+        // Falling back to the heuristic ran the default fusion under an option that said otherwise, silently.
+        var search = () => CreateService(withDynamicFusion: false).SearchAsync(
+            Query, new HybridSearchOptions { EnableDynamicAlphaTuning = true }, TestContext.Current.CancellationToken);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(search);
+        Assert.Contains("AddDynamicAlphaTuning", error.Message);
+    }
+
+    [Fact]
+    public async Task AContainerWithTuningAndNoQuantizer_ResolvesTheTuningService()
+    {
+        // With one constructor per combination the container picked the longest it could fill; a tuning service
+        // without a quantizer matched none but the plain one, and the option was dropped.
+        var services = new ServiceCollection();
+        services.AddSingleton(typeof(Microsoft.Extensions.Logging.ILogger<>), typeof(NullLogger<>));
+        services.AddSingleton(_vectorStore);
+        services.AddSingleton(_keywordSearch);
+        services.AddSingleton(_embedding);
+        services.AddSingleton(_dynamicFusion);
+        services.AddScoped<IHybridSearchService, HybridSearchService>();
+        _dynamicFusion.CalculateDynamicWeightsAsync(Query, Arg.Any<CancellationToken>())
+            .Returns(new DynamicFusionConfiguration { VectorWeight = 0.9, SparseWeight = 0.1, RecommendedFusion = FusionMethod.RRF });
+
+        await using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var results = await scope.ServiceProvider.GetRequiredService<IHybridSearchService>().SearchAsync(
+            Query, new HybridSearchOptions { EnableDynamicAlphaTuning = true }, TestContext.Current.CancellationToken);
+
+        Assert.All(results, r => Assert.Equal(FusionSelection.DynamicAlphaTuning, r.Fusion.SelectedBy));
     }
 
     [Fact]

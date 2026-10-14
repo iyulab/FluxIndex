@@ -223,8 +223,9 @@ var results = await hybridSearch.SearchAsync(query, options);
 ```
 
 Leave any of the three unset (null) and the service chooses it per query — Dynamic Alpha Tuning when
-`EnableDynamicAlphaTuning` is on and an `IDynamicFusionService` is registered, otherwise a query-length/term
-heuristic. `AppliedFusion.SelectedBy` says which: `Caller`, `DynamicAlphaTuning`, `QueryHeuristic`, or
+`EnableDynamicAlphaTuning` is on, otherwise a query-length/term heuristic. The SDK builder and `AddFluxIndexCore()`
+register the tuning service; a hybrid service built without one throws `InvalidOperationException` when the option is
+on (since 0.93.0 — before, it fell back to the heuristic without saying so). `AppliedFusion.SelectedBy` says which: `Caller`, `DynamicAlphaTuning`, `QueryHeuristic`, or
 `ServiceDefault` (Qdrant's native hybrid fills unset values with RRF 0.7 / 0.3).
 
 `HybridSearchOptions.TimeoutMs` bounds the whole search (fusion selection, both legs, fusion): past it the call throws

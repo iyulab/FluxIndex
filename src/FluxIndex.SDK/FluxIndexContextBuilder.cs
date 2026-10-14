@@ -709,6 +709,8 @@ public class FluxIndexContextBuilder
         // each scope its own empty index — the indexer would fill one and the retriever read another.
         _services.TryAddSingleton<IKeywordSearchService, BM25SparseRetriever>();
         _services.TryAddScoped<IHybridSearchService, HybridSearchService>();
+        // HybridSearchOptions.EnableDynamicAlphaTuning needs it; without it the option has nothing to run.
+        CoreServiceExtensions.AddDynamicAlphaTuning(_services);
         _services.TryAddScoped<IRankFusionService, RankFusionService>();
 
         // Register Small-to-Big services

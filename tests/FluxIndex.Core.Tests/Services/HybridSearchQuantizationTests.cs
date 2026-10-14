@@ -41,8 +41,8 @@ public class HybridSearchQuantizationTests
             _mockVectorStore,
             _mockKeywordSearchService,
             _mockEmbeddingService,
-            _mockQuantizer,
-            _logger);
+            _logger,
+            _mockQuantizer);
 
         // Assert - 양자화 지원 확인 (VectorStore가 IQuantizedVectorStore가 아니므로 false)
         Assert.False(service.SupportsQuantizedSearch);
@@ -56,8 +56,8 @@ public class HybridSearchQuantizationTests
             _mockVectorStore,
             _mockKeywordSearchService,
             _mockEmbeddingService,
-            null,
-            _logger);
+            _logger,
+            null);
 
         // Assert
         Assert.False(service.SupportsQuantizedSearch);
@@ -91,8 +91,8 @@ public class HybridSearchQuantizationTests
             (IVectorStore)mockQuantizedStore,
             _mockKeywordSearchService,
             _mockEmbeddingService,
-            _mockQuantizer,
-            _logger);
+            _logger,
+            _mockQuantizer);
 
         // Act & Assert
         Assert.True(service.SupportsQuantizedSearch);
@@ -106,8 +106,8 @@ public class HybridSearchQuantizationTests
             _mockVectorStore, // regular IVectorStore, not IQuantizedVectorStore
             _mockKeywordSearchService,
             _mockEmbeddingService,
-            _mockQuantizer,
-            _logger);
+            _logger,
+            _mockQuantizer);
 
         // Act & Assert
         Assert.False(service.SupportsQuantizedSearch);
@@ -123,8 +123,8 @@ public class HybridSearchQuantizationTests
             (IVectorStore)mockQuantizedStore,
             _mockKeywordSearchService,
             _mockEmbeddingService,
-            null, // no quantizer
-            _logger);
+            _logger,
+            null); // no quantizer
 
         // Act & Assert
         Assert.False(service.SupportsQuantizedSearch);
@@ -173,8 +173,8 @@ public class HybridSearchQuantizationTests
             (IVectorStore)mockQuantizedStore,
             _mockKeywordSearchService,
             _mockEmbeddingService,
-            _mockQuantizer,
-            _logger);
+            _logger,
+            _mockQuantizer);
 
         var options = new HybridSearchOptions
         {
@@ -229,8 +229,8 @@ public class HybridSearchQuantizationTests
             (IVectorStore)mockQuantizedStore,
             _mockKeywordSearchService,
             _mockEmbeddingService,
-            _mockQuantizer,
-            _logger);
+            _logger,
+            _mockQuantizer);
 
         var options = new HybridSearchOptions
         {
@@ -294,8 +294,8 @@ public class HybridSearchQuantizationTests
             (IVectorStore)mockQuantizedStore,
             _mockKeywordSearchService,
             _mockEmbeddingService,
-            _mockQuantizer,
-            _logger);
+            _logger,
+            _mockQuantizer);
 
         var options = new HybridSearchOptions
         {
@@ -354,8 +354,8 @@ public class HybridSearchQuantizationTests
             (IVectorStore)mockQuantizedStore,
             _mockKeywordSearchService,
             _mockEmbeddingService,
-            _mockQuantizer,
-            _logger);
+            _logger,
+            _mockQuantizer);
 
         var options = new HybridSearchOptions
         {
@@ -413,8 +413,8 @@ public class HybridSearchQuantizationTests
             (IVectorStore)mockQuantizedStore,
             _mockKeywordSearchService,
             _mockEmbeddingService,
-            _mockQuantizer,
-            _logger);
+            _logger,
+            _mockQuantizer);
 
         var options = new HybridSearchOptions
         {
