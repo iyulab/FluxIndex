@@ -42,6 +42,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **Two searches whose filters held different collections under one key no longer share a cache entry.** The search cache
   key printed each filter value, and every `List<string>` prints as the same type name, so the filter overload of
   `Retriever.SearchAsync` answered the second scope with the first scope's cached results.
+- **`QdrantOptions.OnDiskPayload` stores the payload on disk, as documented.** It set the collection's vectors to be served
+  from disk instead (`VectorParams.OnDisk`) and left the payload where the server put it. Collections this store creates
+  now get `on_disk_payload`; an existing collection keeps the settings it was created with — recreate it to change them.
+
+### Dependencies
+- Microsoft.Extensions.* and Entity Framework Core 10.0.13 (.NET servicing), Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3,
+  StackExchange.Redis 3.4.5, Neo4j.Driver 6.3.0, Qdrant.Client 1.19.0.
 
 ## [0.93.0] - 2026-10-15
 

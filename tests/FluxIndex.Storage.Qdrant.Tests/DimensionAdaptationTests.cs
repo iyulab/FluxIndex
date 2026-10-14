@@ -56,7 +56,8 @@ public class DimensionAdaptationTests : IAsyncLifetime
     private QdrantVectorStore CreateVectorStore(
         string baseCollectionName,
         CollectionNamingStrategy strategy = CollectionNamingStrategy.ModelFingerprint,
-        int vectorSize = 1536)
+        int vectorSize = 1536,
+        bool onDiskPayload = false)
     {
         var options = Options.Create(new QdrantOptions
         {
@@ -65,7 +66,8 @@ public class DimensionAdaptationTests : IAsyncLifetime
             BaseCollectionName = baseCollectionName,
             NamingStrategy = strategy,
             VectorSize = vectorSize,
-            CreateCollectionOnStartup = true
+            CreateCollectionOnStartup = true,
+            OnDiskPayload = onDiskPayload
         });
 
         return new QdrantVectorStore(options, _logger);
@@ -257,6 +259,26 @@ public class DimensionAdaptationTests : IAsyncLifetime
     }
 
     #endregion
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OnDiskPayload_PutsThePayloadOnDisk_AndLeavesTheVectorsAlone(bool onDiskPayload)
+    {
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
+
+        var collectionName = $"ondisk_payload_{Guid.NewGuid():N}";
+        await using var vectorStore = CreateVectorStore(collectionName, CollectionNamingStrategy.Fixed, vectorSize: 8, onDiskPayload);
+        await vectorStore.StoreAsync(CreateTestChunk(8), TestContext.Current.CancellationToken);
+
+        var info = await _qdrantClient!.GetCollectionInfoAsync(collectionName, TestContext.Current.CancellationToken);
+        if (onDiskPayload)
+            info.Config.Params.OnDiskPayload.Should().BeTrue("the option asks for on-disk payload storage");
+        // false leaves the server default (the client cannot send an explicit false), so nothing to assert there.
+#pragma warning disable CS0612 // the deprecated flag is what earlier releases set from this option by mistake
+        info.Config.Params.VectorsConfig.Params.OnDisk.Should().BeFalse("the option is about the payload, not the vectors");
+#pragma warning restore CS0612
+    }
 
     #region Collection Name Accessors Tests
 

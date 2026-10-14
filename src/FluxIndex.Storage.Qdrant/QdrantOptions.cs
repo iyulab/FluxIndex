@@ -124,7 +124,9 @@ public class QdrantOptions
     public int HnswEfConstruct { get; set; } = 100;
 
     /// <summary>
-    /// On-disk payload storage for large metadata.
+    /// Keep the collection's payload (chunk text and metadata) on disk instead of in RAM — Qdrant's <c>on_disk_payload</c>,
+    /// applied when this store creates the collection. Indexed payload fields used for filtering stay in RAM. False leaves
+    /// the server's default (current Qdrant releases store payload on disk by default). It does not move the vectors.
     /// </summary>
     public bool OnDiskPayload { get; set; }
 

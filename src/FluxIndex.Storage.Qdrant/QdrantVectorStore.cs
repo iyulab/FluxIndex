@@ -257,9 +257,9 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
             vectorsConfig: new VectorParams
             {
                 Size = (ulong)dimension,
-                Distance = distance,
-                OnDisk = _options.OnDiskPayload
+                Distance = distance
             },
+            onDiskPayload: _options.OnDiskPayload,
             hnswConfig: new HnswConfigDiff
             {
                 M = (ulong)_options.HnswM,
@@ -686,12 +686,13 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
 
         var qdrantFilter = BuildQdrantFilter(filters);
 
-        var results = await _client.SearchAsync(
+        var results = await _client.QueryAsync(
             collectionName: _resolvedCollectionName!,
-            vector: queryEmbedding,
+            query: queryEmbedding,
             filter: qdrantFilter,
-            limit: (ulong)topK,
             scoreThreshold: minScore,
+            limit: (ulong)topK,
+            payloadSelector: true,
             cancellationToken: cancellationToken);
 
         return results.Select(r =>
