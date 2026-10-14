@@ -5,9 +5,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.92.0] - Unreleased
+
+### Changed
+- **Breaking** — **`Indexer.IndexBatchAsync` no longer drops a document it could not index without telling the caller.**
+  When a document's preparation or embedding failed (an embedding server refusing a long passage, say), the batch logged
+  it and returned the ids that were written — a caller learned of the gap only by comparing that list with its input. The
+  batch still writes every other document, then throws `BatchIndexingException`: `IndexedIds` (what was written, in input
+  order) and `Failures` (each document left out, with its exception). Migration: a caller that tolerates partial batches
+  catches `BatchIndexingException` and reads `IndexedIds`; progress reports and `BatchCompleted` are unchanged.
+
+### Added
+- **`BatchIndexingException`** (see above).
 
 ### Documentation
+- **The guide's «Basic Search» example says what it is**: `Retriever.SearchAsync(query, maxResults, minScore)` is vector-only
+  (it was labelled adaptive); hybrid and strategy choice are named next to it. The README says `Fusion` is on
+  `IHybridSearchService` results, not on the SDK's `SearchAsync` results.
 - **`docs/QUALITY-BENCHMARKS.md` names the public benchmarks for retrieval quality**: MTEB(kor, v2) led by MIRACL-ko
   (nDCG@10, Recall@100 against the BM25 baseline), MIRACLReranking for the reranker, BEIR for English.
 - **Every C# example in `docs/` compiles as its guide assembles it** — the design document and the documentation index

@@ -520,7 +520,8 @@ await fileFlux.ProcessAndIndexAsync("document.pdf");
 ### Basic Search
 
 ```csharp
-// Adaptive search (auto-selects best strategy)
+// Vector search with a score floor (this overload is vector-only; omitted values come from RetrieverOptions — minScore 0.2).
+// Hybrid: SearchAsync(query, new SearchOptions { UseHybridSearch = true }). Strategy choice: context.AdaptiveSearchAsync(query).
 var results = await context.Retriever.SearchAsync(
     query: "How does machine learning work?",
     maxResults: 10,

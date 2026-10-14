@@ -131,6 +131,60 @@ public sealed class BatchIndexingWritesOnceTests : IDisposable
     }
 
     [Fact]
+    public async Task IndexBatchAsync_ADocumentThatFails_IsReported_AndTheOthersAreWritten()
+    {
+        // An embedder that fails for one text (a server refusing a long passage, say) used to leave that document out
+        // with only a log line: the returned ids were the only signal, and a caller had to diff them against its input.
+        var path = Path.Combine(Path.GetTempPath(), $"fluxindex-batch-{Guid.NewGuid():N}.db");
+        _paths.Add(path);
+        await using var context = (FluxIndexContext)FluxIndexContext.CreateBuilder()
+            .UseSQLite(path)
+            .UseEmbeddingService(new FailingForEmbeddingService("refuse"))
+            .AddSQLiteStorage()
+            .SuppressStartupMessages()
+            .Build();
+
+        var documents = new[] { ("a", "printers and scanners"), ("b", "refuse this one"), ("c", "scanners only") }.Select(c =>
+        {
+            var document = Document.Create(c.Item1);
+            document.Content = c.Item2;
+            document.Chunks = [DocumentChunk.Create(c.Item1, c.Item2, 0, 1)];
+            return document;
+        }).ToList();
+
+        var act = () => context.Indexer.IndexBatchAsync(documents, parallelism: 2, cancellationToken: Ct);
+
+        var ex = (await act.Should().ThrowAsync<BatchIndexingException>()).Which;
+        ex.IndexedIds.Should().Equal("a", "c");
+        ex.Failures.Should().ContainKey("b").WhoseValue.Message.Should().Contain("refused");
+        ex.Message.Should().StartWith("1 of 3 documents could not be indexed (the other 2 were)");
+        (await context.Retriever.KeywordSearchAsync("scanners", cancellationToken: Ct)).Should().HaveCount(2,
+            "the documents that could be indexed are written");
+    }
+
+    private sealed class FailingForEmbeddingService(string refuse) : IEmbeddingService
+    {
+        public Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default) =>
+            text.Contains(refuse, StringComparison.Ordinal)
+                ? throw new InvalidOperationException("the embedding server refused the text")
+                : Task.FromResult(new[] { text.Length, 1f, 0f });
+
+        public async Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default)
+        {
+            var vectors = new List<float[]>();
+            foreach (var text in texts)
+                vectors.Add(await GenerateEmbeddingAsync(text, cancellationToken));
+            return vectors;
+        }
+
+        public int GetEmbeddingDimension() => 3;
+        public string GetModelName() => "failing-test-embedder";
+        public int GetMaxTokens() => 512;
+        public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default) => Task.FromResult(text.Length);
+        public FluxIndex.Core.Domain.ValueObjects.EmbeddingIdentity GetIdentity() => new() { Provider = "Test", Model = "failing-test-embedder", Dimension = 3 };
+    }
+
+    [Fact]
     public async Task IndexBatchAsync_WritesTheDocuments_AndReplacesLikeIndexing()
     {
         await using var context = NewContext();

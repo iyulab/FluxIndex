@@ -763,6 +763,11 @@ public partial class Indexer
     /// <summary>
     /// 배치 인덱싱
     /// </summary>
+    /// <returns>The ids written, in input order.</returns>
+    /// <exception cref="BatchIndexingException">
+    /// A document could not be indexed (its preparation or embedding failed). The others were written; the exception
+    /// carries their ids and each failure.
+    /// </exception>
     public async Task<IEnumerable<string>> IndexBatchAsync(
         IEnumerable<Document> documents,
         int parallelism = 4,
@@ -778,6 +783,11 @@ public partial class Indexer
     /// <param name="progress">배치 진행률 보고 객체 (선택)</param>
     /// <param name="parallelism">병렬 처리 수준</param>
     /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>The ids written, in input order.</returns>
+    /// <exception cref="BatchIndexingException">
+    /// A document could not be indexed (its preparation or embedding failed). The others were written; the exception
+    /// carries their ids and each failure.
+    /// </exception>
     public async Task<IEnumerable<string>> IndexBatchAsync(
         IEnumerable<Document> documents,
         IProgress<BatchProgress>? progress,
@@ -817,6 +827,7 @@ public partial class Indexer
         var successCount = 0;
         var failedCount = 0;
         var lockObject = new object();
+        var failures = new Dictionary<string, Exception>(StringComparer.Ordinal);
 
         var results = await IndexDocumentsCoreAsync(documentList, null, parallelism, (doc, error) =>
         {
@@ -827,6 +838,8 @@ public partial class Indexer
             {
                 completedCount++;
                 if (error == null) successCount++; else failedCount++;
+                if (error != null)
+                    failures[doc.Id] = error;
 
                 progress?.Report(new BatchProgress
                 {
@@ -868,6 +881,11 @@ public partial class Indexer
             FailedItems = failedCount,
             TotalProcessingTime = DateTime.UtcNow - startTime
         });
+
+        // A document left out is reported, not dropped: a caller that only reads the returned ids would otherwise not
+        // know its batch is incomplete. The written documents stay written.
+        if (failures.Count > 0)
+            throw new BatchIndexingException(results, failures);
 
         return results;
     }
