@@ -34,6 +34,30 @@ public class QueryComplexityAnalyzerTests
         Assert.Contains("learning", result.Keywords);
     }
 
+    [Theory]
+    [InlineData("룩셈부르크의 수도는 어디인가?")]       // question word with the copula attached, and a question mark
+    [InlineData("로마 제국 첫 황제는 누군가요")]          // contracted question word, no question mark
+    [InlineData("나일 강의 길이는?")]                    // no question word, a question mark
+    [InlineData("What is retrieval augmented generation")]
+    public async Task AnalyzeAsync_AQuestion_IsANaturalQuestion_InKoreanToo(string query)
+    {
+        // Korean question words carry particles and the tokenizer drops «?», so Korean questions were typed as keyword
+        // searches and Dynamic Alpha Tuning weighted the keyword leg 0.65 (Korean MIRACL: 156 of 213 questions).
+        var result = await _analyzer.AnalyzeAsync(query, TestContext.Current.CancellationToken);
+
+        Assert.Equal(QueryType.NaturalQuestion, result.Type);
+    }
+
+    [Theory]
+    [InlineData("노트북 배터리 교체")]
+    [InlineData("machine learning")]
+    public async Task AnalyzeAsync_KeywordsWithoutAQuestion_StayAKeywordSearch(string query)
+    {
+        var result = await _analyzer.AnalyzeAsync(query, TestContext.Current.CancellationToken);
+
+        Assert.Equal(QueryType.SimpleKeyword, result.Type);
+    }
+
     [Fact]
     public async Task AnalyzeAsync_NaturalQuestion_ReturnsCorrectType()
     {

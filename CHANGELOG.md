@@ -22,6 +22,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   analyzer and is rebuilt once on first open. `ITextAnalyzer` gains `Identity` — migration: a custom analyzer returns a
   stable name and changes it whenever its output would change.
 
+- **Breaking** — **Hybrid search reads a Korean, Japanese or Chinese query as a natural-language query, not a keyword
+  lookup.** The default fusion heuristic counted whitespace tokens, so a two-word Korean question («중국의 수도는?») was
+  weighted 0.7 toward the keyword leg; and Dynamic Alpha Tuning recognized a question only by whole English or Korean
+  question words, so Korean questions («…어디인가?», «…누군가요») were typed as keyword searches. A query with CJK text is
+  now vector-first (RRF 0.8 / 0.2) at any length, and a query that ends with a question mark or holds a question word
+  (Korean ones as the start of a word) is a natural question. Measured on Korean MIRACL: the default hybrid goes from
+  nDCG@10 0.729 to 0.761 (vector alone 0.765); English queries are unchanged (BEIR NFCorpus, where the heuristic beats
+  every fixed weighting). Queries that set the fusion themselves are unaffected.
+
 ### Added
 - **`AddLMSupplyEmbedding` logs where the embedding model runs when it loads**, through the container's logger: the
   active providers at Information, and a Warning when a GPU provider was asked for by name and the model runs without

@@ -188,10 +188,29 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
             .ToArray();
     }
 
+    /// <summary>
+    /// Korean question words as they begin a word: Korean attaches the copula or a particle to them («누구인가», «무엇을»,
+    /// «어디서»), and contracts some («누군가요», «어딘가요»), so the whole-token match never saw a Korean question.
+    /// </summary>
+    private static readonly string[] KoreanQuestionWordPrefixes =
+        ["무엇", "누구", "누군", "언제", "어디", "어딘", "어떻게", "어떤", "무슨", "어느", "몇", "얼마"];
+
+    /// <summary>Whether a token is a question word: an English one whole, a Korean one as the start of the word.</summary>
+    private static bool IsQuestionWord(string token)
+        => QuestionWords.Contains(token)
+           || KoreanQuestionWordPrefixes.Any(prefix => token.StartsWith(prefix, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Whether the query asks something: it ends with a question mark (the tokenizer drops it), or holds a question word.
+    /// On Korean MIRACL every query ends with «?» and most of them were typed as keyword searches.
+    /// </summary>
+    private static bool IsQuestion(string query, string[] tokens)
+        => query.TrimEnd().EndsWith('?') || query.TrimEnd().EndsWith('\uFF1F') || tokens.Any(IsQuestionWord);
+
     private static QueryType DetermineQueryType(string query, string[] tokens)
     {
         // 질문 단어가 있으면 자연어 질문
-        if (tokens.Any(t => QuestionWords.Contains(t)))
+        if (IsQuestion(query, tokens))
         {
             if (IsMultiHop(query, tokens))
                 return QueryType.MultiHopQuery;
@@ -239,7 +258,7 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         else if (tokens.Length > 5) complexityScore += 1;
 
         // 질문 단어 개수
-        var questionWordCount = tokens.Count(t => QuestionWords.Contains(t));
+        var questionWordCount = tokens.Count(IsQuestionWord);
         if (questionWordCount > 1) complexityScore += 2;
         else if (questionWordCount > 0) complexityScore += 1;
 
@@ -375,7 +394,7 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         if (tokens.Length >= 2 && tokens.Length <= 15) confidence += 0.2;
 
         // 명확한 패턴이 있으면 신뢰도 증가
-        if (tokens.Any(t => QuestionWords.Contains(t))) confidence += 0.1;
+        if (tokens.Any(IsQuestionWord)) confidence += 0.1;
         if (tokens.Any(t => TechnicalTerms.Contains(t))) confidence += 0.1;
 
         // 너무 짧거나 길면 신뢰도 감소

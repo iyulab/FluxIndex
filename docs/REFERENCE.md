@@ -223,7 +223,9 @@ var results = await hybridSearch.SearchAsync(query, options);
 ```
 
 Leave any of the three unset (null) and the service chooses it per query — Dynamic Alpha Tuning when
-`EnableDynamicAlphaTuning` is on, otherwise a query-length/term heuristic. The SDK builder and `AddFluxIndexCore()`
+`EnableDynamicAlphaTuning` is on, otherwise a query heuristic: a query with Korean, Japanese or Chinese text is
+vector-first (RRF 0.8 / 0.2); otherwise one or two words lean on the keyword leg (0.3 / 0.7), three to five are balanced
+(0.6 / 0.4) and longer queries are vector-first, with weighted-sum fusion when the query names a technical term. The SDK builder and `AddFluxIndexCore()`
 register the tuning service; a hybrid service built without one throws `InvalidOperationException` when the option is
 on (since 0.93.0 — before, it fell back to the heuristic without saying so). `AppliedFusion.SelectedBy` says which: `Caller`, `DynamicAlphaTuning`, `QueryHeuristic`, or
 `ServiceDefault` (Qdrant's native hybrid fills unset values with RRF 0.7 / 0.3).

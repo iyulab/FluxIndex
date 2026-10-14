@@ -316,6 +316,15 @@ public class QueryCharacteristics
     /// 전문 용어 포함 여부 — picks weighted-sum fusion instead of RRF.
     /// </summary>
     public bool ContainsTechnicalTerms { get; init; }
+
+    /// <summary>
+    /// Whether the query holds Korean, Japanese or Chinese text — picks the vector-first strategy whatever
+    /// <see cref="Length"/> says. Whitespace tokens undercount such a query (Korean attaches particles to words; Chinese and
+    /// Japanese use no spaces), and the keyword leg reads it as character bigrams, a weaker relevance signal than
+    /// word-level BM25: on Korean MIRACL every keyword weight above 0.2 lost to vector-first fusion, including for queries of
+    /// one or two words (two Korean words are a whole question).
+    /// </summary>
+    public bool ContainsCjk { get; init; }
 }
 
 /// <summary>

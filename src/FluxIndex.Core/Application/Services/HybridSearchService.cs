@@ -445,17 +445,23 @@ public partial class HybridSearchService : IHybridSearchService
         {
             Length = length,
             ContainsTechnicalTerms = ContainsTechnicalTerms(tokens),
+            ContainsCjk = KeywordSearch.CjkBigramTextAnalyzer.ContainsCjk(query),
         };
     }
 
     private static HybridSearchStrategy DetermineOptimalStrategy(QueryCharacteristics characteristics)
     {
-        var strategyType = characteristics.Length switch
-        {
-            <= 2 => SearchStrategyType.SparseFirst, // 짧은 키워드
-            <= 5 => SearchStrategyType.Balanced,    // 중간 길이
-            _ => SearchStrategyType.VectorFirst     // 긴 자연어 쿼리
-        };
+        // A CJK query is vector-first at any length (see QueryCharacteristics.ContainsCjk); otherwise the whitespace length
+        // stands for the query's shape - short lookups lean on the keyword leg (BEIR NFCorpus: this heuristic beats every
+        // fixed weighting), long natural-language queries on the vector leg.
+        var strategyType = characteristics.ContainsCjk
+            ? SearchStrategyType.VectorFirst
+            : characteristics.Length switch
+            {
+                <= 2 => SearchStrategyType.SparseFirst, // 짧은 키워드
+                <= 5 => SearchStrategyType.Balanced,    // 중간 길이
+                _ => SearchStrategyType.VectorFirst     // 긴 자연어 쿼리
+            };
 
         var fusionMethod = characteristics.ContainsTechnicalTerms
             ? FusionMethod.WeightedSum  // 전문용어는 가중합
@@ -475,7 +481,7 @@ public partial class HybridSearchService : IHybridSearchService
             RecommendedFusion = fusionMethod,
             RecommendedWeights = weights,
             Confidence = 0.8,
-            Reasoning = $"{characteristics.Length} token(s){(characteristics.ContainsTechnicalTerms ? ", technical terms" : "")}",
+            Reasoning = $"{characteristics.Length} token(s){(characteristics.ContainsCjk ? ", CJK" : "")}{(characteristics.ContainsTechnicalTerms ? ", technical terms" : "")}",
             QueryCharacteristics = characteristics
         };
     }

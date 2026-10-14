@@ -72,6 +72,18 @@ public class HybridSearchFusionSelectionTests
             new AppliedFusion(FusionMethod.RRF, 0.8, 0.2, 60, FusionSelection.QueryHeuristic), r.Fusion));
     }
 
+    [Theory]
+    [InlineData("중국의 수도는?", 0.8, 0.2)]      // two whitespace tokens, but a whole Korean question: vector first
+    [InlineData("東京都の人口", 0.8, 0.2)]          // Japanese, no spaces at all
+    [InlineData("battery drain", 0.3, 0.7)]     // a two-word English lookup still leans on the keyword leg
+    public async Task SearchAsync_NothingSet_ACjkQueryIsVectorFirst_AtAnyLength(string query, double vector, double sparse)
+    {
+        var results = await CreateService().SearchAsync(query, new HybridSearchOptions(), TestContext.Current.CancellationToken);
+
+        Assert.All(results, r => Assert.Equal(
+            new AppliedFusion(FusionMethod.RRF, vector, sparse, 60, FusionSelection.QueryHeuristic), r.Fusion));
+    }
+
     [Fact]
     public async Task SearchAsync_OnlyWeightsSet_WeightsAreKeptAndOnlyTheMethodIsChosen()
     {

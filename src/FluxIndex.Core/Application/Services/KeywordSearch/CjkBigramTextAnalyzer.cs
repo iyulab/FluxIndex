@@ -26,6 +26,18 @@ public sealed class CjkBigramTextAnalyzer : ITextAnalyzer
     /// <inheritdoc />
     public string Identity => "fluxindex.cjk-bigram/1";
 
+    /// <summary>Whether <paramref name="text"/> holds a Korean, Japanese or Chinese character.</summary>
+    internal static bool ContainsCjk(string text)
+    {
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (IsCjk(rune))
+                return true;
+        }
+
+        return false;
+    }
+
     /// <inheritdoc />
     public IEnumerable<string> Tokenize(string text)
     {
@@ -88,7 +100,7 @@ public sealed class CjkBigramTextAnalyzer : ITextAnalyzer
     /// Hangul (syllables and jamo), CJK unified ideographs (base block, extension A, the
     /// compatibility block, and the supplementary-plane extensions B–I), Hiragana, Katakana.
     /// </summary>
-    private static bool IsCjk(Rune r) => r.Value switch
+    internal static bool IsCjk(Rune r) => r.Value switch
     {
         >= 0xAC00 and <= 0xD7A3 => true,     // Hangul syllables
         >= 0x1100 and <= 0x11FF => true,     // Hangul jamo
