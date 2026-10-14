@@ -27,15 +27,26 @@ public class SQLiteKeywordSearchAnalyzerTests : IDisposable
     private static DocumentChunk Chunk(string id, string content) => DocumentChunk.Create(id, content, 0, 1);
 
     [Fact]
-    public async Task Default_BareKoreanStem_DoesNotMatchItsInflectedForm()
+    public async Task WordAnalyzer_BareKoreanStem_DoesNotMatchItsInflectedForm()
     {
-        // The measured defect: with the default analyzer 규정에 and 규정 are unrelated terms.
+        // The measured defect of whole-word analysis (the default before 0.93.0): 규정에 and 규정 are unrelated terms.
+        using var service = Create(WordTextAnalyzer.Instance);
+        await service.IndexChunksAsync([Chunk("d1", "이 규정에 따라 처리한다")], TestContext.Current.CancellationToken);
+
+        var hits = await service.SearchAsync("규정", cancellationToken: TestContext.Current.CancellationToken);
+
+        hits.Should().BeEmpty("WordTextAnalyzer keeps every whitespace-delimited word as one term");
+    }
+
+    [Fact]
+    public async Task Default_BareKoreanStem_MatchesItsInflectedForm()
+    {
         using var service = Create(analyzer: null);
         await service.IndexChunksAsync([Chunk("d1", "이 규정에 따라 처리한다")], TestContext.Current.CancellationToken);
 
         var hits = await service.SearchAsync("규정", cancellationToken: TestContext.Current.CancellationToken);
 
-        hits.Should().BeEmpty("DefaultTextAnalyzer keeps the previous behaviour — this is the gap the seam exists for");
+        hits.Should().ContainSingle("the default analyzer is CjkBigramTextAnalyzer since 0.93.0");
     }
 
     [Fact]
@@ -58,7 +69,8 @@ public class SQLiteKeywordSearchAnalyzerTests : IDisposable
         // If the two paths could use different analyzers, a consumer could index with one and
         // query with another and never learn why nothing matches. Prove it is one instance.
         var analyzer = Substitute.For<ITextAnalyzer>();
-        analyzer.Tokenize(Arg.Any<string>()).Returns(ci => DefaultTextAnalyzer.Instance.Tokenize(ci.Arg<string>()));
+        analyzer.Identity.Returns("test/1");
+        analyzer.Tokenize(Arg.Any<string>()).Returns(ci => WordTextAnalyzer.Instance.Tokenize(ci.Arg<string>()));
         using var service = Create(analyzer);
 
         await service.IndexChunksAsync([Chunk("d1", "transaction boundaries")], TestContext.Current.CancellationToken);

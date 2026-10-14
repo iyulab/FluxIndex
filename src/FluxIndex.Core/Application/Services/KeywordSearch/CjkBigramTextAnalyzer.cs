@@ -5,7 +5,7 @@ namespace FluxIndex.Core.Application.Services.KeywordSearch;
 
 /// <summary>
 /// Dependency-free analyzer for text that mixes Latin script with Korean, Japanese or Chinese.
-/// Latin tokens are handled exactly as <see cref="DefaultTextAnalyzer"/> does; a run of CJK
+/// Latin tokens are handled exactly as <see cref="WordTextAnalyzer"/> does; a run of CJK
 /// characters is emitted as overlapping character bigrams (a single character stands alone), so a
 /// bare stem in the query matches its inflected forms in the index by their shared bigrams
 /// (<c>규정</c> ⊂ <c>규정에</c>, <c>규정을</c>, <c>규정이</c>).
@@ -14,7 +14,7 @@ namespace FluxIndex.Core.Application.Services.KeywordSearch;
 /// This is the recall-first baseline that needs no morphological analyzer. It over-generates
 /// (bigrams that cross a morpheme boundary are indexed too), which BM25's IDF weighting tolerates
 /// well in practice; a consumer that wants linguistic precision plugs in a real tokenizer through
-/// <see cref="ITextAnalyzer"/>. Opt-in: nothing changes for consumers that do not register it.
+/// <see cref="ITextAnalyzer"/>. The keyword index's default since 0.93.0 (it was opt-in before).
 /// Scans by Unicode scalar, not UTF-16 code unit, so a supplementary-plane ideograph is one
 /// character and is never split into the halves of its surrogate pair.
 /// </remarks>
@@ -22,6 +22,9 @@ public sealed class CjkBigramTextAnalyzer : ITextAnalyzer
 {
     /// <summary>Shared instance; the analyzer holds no state.</summary>
     public static CjkBigramTextAnalyzer Instance { get; } = new();
+
+    /// <inheritdoc />
+    public string Identity => "fluxindex.cjk-bigram/1";
 
     /// <inheritdoc />
     public IEnumerable<string> Tokenize(string text)
@@ -67,7 +70,7 @@ public sealed class CjkBigramTextAnalyzer : ITextAnalyzer
         if (!cjk)
         {
             var word = string.Concat(run);
-            if (word.Length <= 1 || DefaultTextAnalyzer.StopWords.Contains(word))
+            if (word.Length <= 1 || WordTextAnalyzer.StopWords.Contains(word))
                 return [];
             return [word];
         }

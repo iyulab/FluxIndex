@@ -35,7 +35,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     /// <summary>
     /// The analyzer that turns chunk content and queries into index terms. One instance serves both
-    /// the index path and the query path, so the two cannot disagree; <see cref="DefaultTextAnalyzer"/>
+    /// the index path and the query path, so the two cannot disagree; <see cref="CjkBigramTextAnalyzer"/>
     /// unless the consumer supplies one.
     /// </summary>
     protected ITextAnalyzer Analyzer { get; }
@@ -49,13 +49,18 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     /// <summary>
     /// Initializes the shared index with the logger used for its operations and, optionally, the
-    /// analyzer that defines what a term is (<see cref="DefaultTextAnalyzer"/> when omitted) and the
+    /// analyzer that defines what a term is (<see cref="CjkBigramTextAnalyzer"/> when omitted) and the
     /// metadata fields scored beside the body (the <see cref="KeywordFieldOptions"/> default when omitted).
     /// </summary>
     protected RelationalKeywordSearchService(ILogger logger, ITextAnalyzer? analyzer = null, KeywordFieldOptions? fields = null)
     {
         Logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        Analyzer = analyzer ?? DefaultTextAnalyzer.Instance;
+        Analyzer = analyzer ?? CjkBigramTextAnalyzer.Instance;
+        if (string.IsNullOrWhiteSpace(Analyzer.Identity))
+            throw new ArgumentException(
+                $"The text analyzer {Analyzer.GetType().FullName} has an empty Identity; the keyword index records it to know which analyzer built its terms.",
+                nameof(analyzer));
+        _analyzerKey = AnalyzerKeyPrefix + Analyzer.Identity;
         Fields = fields ?? new KeywordFieldOptions();
         _configuredFields = new HashSet<string>(Fields.Fields.Select(f => f.MetadataKey), StringComparer.Ordinal);
         _documentFrequencyFieldsKey = DocumentFrequencyFieldsKeyPrefix
@@ -72,6 +77,17 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     private readonly string _documentFrequencyFieldsKey;
 
     private const string DocumentFrequencyFieldsKeyPrefix = "df_fields:";
+
+    /// <summary>
+    /// The statistics key recording which analyzer produced the stored terms. Opened with another, the index
+    /// re-tokenizes its stored chunks (<see cref="RebuildTermsAsync"/>).
+    /// </summary>
+    private readonly string _analyzerKey;
+
+    private const string AnalyzerKeyPrefix = "analyzer:";
+
+    /// <summary>Chunks re-tokenized per transaction when the index rebuilds its terms.</summary>
+    private const int RebuildBatchSize = 500;
 
     #region Dialect surface
 
@@ -243,8 +259,16 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 await ExecuteSchemaDdlAsync(connection, cancellationToken).ConfigureAwait(false);
             }
 
+            // Read before the recount below rewrites the recorded field set.
+            var definitionChange = await DescribeIndexDefinitionChangeAsync(cancellationToken).ConfigureAwait(false);
+
             await RunWithConcurrencyRetryAsync(
                 () => ReconcileDocumentFrequencyFieldsAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
+
+            if (definitionChange is not null)
+                await RebuildTermsAsync(definitionChange, cancellationToken).ConfigureAwait(false);
+
+            await RecordAnalyzerAsync(cancellationToken).ConfigureAwait(false);
 
             _initialized = true;
             LogServiceInitialized(Logger, BackendName);
@@ -1816,20 +1840,163 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         }
     }
 
-    private static async Task<List<string>> ReadDocumentFrequencyFieldsKeysAsync(DbConnection connection, CancellationToken cancellationToken)
+    private static Task<List<string>> ReadDocumentFrequencyFieldsKeysAsync(DbConnection connection, CancellationToken cancellationToken)
+        => ReadStatisticKeysAsync(connection, DocumentFrequencyFieldsKeyPrefix, cancellationToken);
+
+    /// <summary>The <c>bm25_statistics</c> keys starting with <paramref name="prefix"/> (a prefix without LIKE wildcards).</summary>
+    private static async Task<List<string>> ReadStatisticKeysAsync(DbConnection connection, string prefix, CancellationToken cancellationToken)
     {
         var keys = new List<string>();
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT key FROM bm25_statistics WHERE key LIKE 'df%'";
+        command.CommandText = "SELECT key FROM bm25_statistics WHERE key LIKE @prefix";
+        AddParameter(command, "@prefix", prefix + "%");
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             var key = reader.GetString(0);
-            if (key.StartsWith(DocumentFrequencyFieldsKeyPrefix, StringComparison.Ordinal))
+            if (key.StartsWith(prefix, StringComparison.Ordinal))
                 keys.Add(key);
         }
 
         return keys;
+    }
+
+    /// <summary>
+    /// What changed in the index definition since the stored terms were written, or <see langword="null"/> when nothing
+    /// did: the analyzer the store recorded is not the one configured now, or the recorded field set is not.
+    /// </summary>
+    /// <remarks>
+    /// A non-empty store that records no analyzer was written by a release that did not record one, under whatever
+    /// analyzer the host registered then - and the default analyzer has changed since. Nothing says which it was, so
+    /// it is rebuilt once. A store that records no field set is recounted (the field postings are rebuilt with the
+    /// analyzer when that runs).
+    /// </remarks>
+    private async Task<string?> DescribeIndexDefinitionChangeAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        var changes = new List<string>();
+
+        var analyzers = await ReadStatisticKeysAsync(connection, AnalyzerKeyPrefix, cancellationToken).ConfigureAwait(false);
+        if (analyzers.Count == 0)
+        {
+            changes.Add($"analyzer not recorded -> {Analyzer.Identity}");
+        }
+        else if (!(analyzers.Count == 1 && string.Equals(analyzers[0], _analyzerKey, StringComparison.Ordinal)))
+        {
+            changes.Add($"analyzer {string.Join(", ", analyzers.Select(k => k[AnalyzerKeyPrefix.Length..]))} -> {Analyzer.Identity}");
+        }
+
+        var fieldSets = await ReadDocumentFrequencyFieldsKeysAsync(connection, cancellationToken).ConfigureAwait(false);
+        if (fieldSets.Count > 0 && !(fieldSets.Count == 1 && string.Equals(fieldSets[0], _documentFrequencyFieldsKey, StringComparison.Ordinal)))
+        {
+            changes.Add($"fields {string.Join(", ", fieldSets.Select(k => k[DocumentFrequencyFieldsKeyPrefix.Length..]))} -> "
+                + _documentFrequencyFieldsKey[DocumentFrequencyFieldsKeyPrefix.Length..]);
+        }
+
+        if (changes.Count == 0)
+            return null;
+
+        // Nothing to rebuild in an empty index: the next writes are analyzed with the current definition.
+        return await CountChunksAsync(connection, cancellationToken).ConfigureAwait(false) == 0 ? null : string.Join("; ", changes);
+    }
+
+    /// <summary>
+    /// Re-tokenizes every stored chunk with the configured analyzer and field set, through the same write path as
+    /// indexing, a batch of <see cref="RebuildBatchSize"/> chunks per transaction in chunk-id order.
+    /// </summary>
+    /// <remarks>
+    /// The chunk payload (content and metadata) is stored, so the terms can be rederived without the caller. A chunk
+    /// the new analyzer produces no terms for leaves the index, as it would on a write. A chunk the previous analyzer
+    /// produced no terms for was never stored and cannot be recovered here; re-index its document. Interrupted, the
+    /// rebuild runs again on the next open (the analyzer is recorded only after it completes); re-tokenizing a chunk
+    /// twice writes the same rows.
+    /// </remarks>
+    private async Task RebuildTermsAsync(string change, CancellationToken cancellationToken)
+    {
+        long total;
+        await using (var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false))
+            total = await CountChunksAsync(connection, cancellationToken).ConfigureAwait(false);
+        LogRebuildStarted(Logger, BackendName, change, total);
+
+        string? after = null;
+        var rebuilt = 0;
+        while (true)
+        {
+            List<string> ids;
+            Dictionary<string, DocumentChunk> chunks;
+            await using (var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false))
+            {
+                ids = await ReadChunkIdPageAsync(connection, after, RebuildBatchSize, cancellationToken).ConfigureAwait(false);
+                if (ids.Count == 0)
+                    break;
+                chunks = await LoadChunksAsync(connection, ids, cancellationToken).ConfigureAwait(false);
+            }
+
+            var tokenized = ids
+                .Where(chunks.ContainsKey)
+                .Select(id => chunks[id])
+                .Select(c => (Chunk: c, Terms: Tokenize(c.Content).ToList(), FieldTerms: TokenizeFields(c)))
+                .ToList();
+            await RunWithConcurrencyRetryAsync(
+                () => IndexTokenizedChunksAsync(tokenized, [], cancellationToken), cancellationToken).ConfigureAwait(false);
+
+            rebuilt += tokenized.Count;
+            after = ids[^1];
+        }
+
+        LogRebuildCompleted(Logger, BackendName, rebuilt, Analyzer.Identity);
+    }
+
+    /// <summary>The next <paramref name="size"/> chunk ids after <paramref name="after"/> (from the start when null), in order.</summary>
+    private static async Task<List<string>> ReadChunkIdPageAsync(DbConnection connection, string? after, int size, CancellationToken cancellationToken)
+    {
+        var ids = new List<string>(size);
+        await using var command = connection.CreateCommand();
+        command.CommandText = after is null
+            ? "SELECT chunk_id FROM bm25_chunks ORDER BY chunk_id LIMIT @size"
+            : "SELECT chunk_id FROM bm25_chunks WHERE chunk_id > @after ORDER BY chunk_id LIMIT @size";
+        if (after is not null)
+            AddParameter(command, "@after", after);
+        AddParameter(command, "@size", size);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            ids.Add(reader.GetString(0));
+        return ids;
+    }
+
+    private static async Task<long> CountChunksAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM bm25_chunks";
+        var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return value is null or DBNull ? 0 : Convert.ToInt64(value, CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Replaces the recorded analyzer with the one configured now.</summary>
+    private async Task RecordAnalyzerAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        var recorded = await ReadStatisticKeysAsync(connection, AnalyzerKeyPrefix, cancellationToken).ConfigureAwait(false);
+        if (recorded.Count == 1 && string.Equals(recorded[0], _analyzerKey, StringComparison.Ordinal))
+            return;
+
+        await WriteAnalyzerKeyAsync(connection, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task WriteAnalyzerKeyAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        foreach (var key in await ReadStatisticKeysAsync(connection, AnalyzerKeyPrefix, cancellationToken).ConfigureAwait(false))
+        {
+            if (string.Equals(key, _analyzerKey, StringComparison.Ordinal))
+                continue;
+
+            await using var deleteCmd = connection.CreateCommand();
+            deleteCmd.CommandText = "DELETE FROM bm25_statistics WHERE key = @key";
+            AddParameter(deleteCmd, "@key", key);
+            await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await UpsertStatisticAsync(connection, _analyzerKey, 1, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Replaces the recorded field set with the one configured now.</summary>
@@ -1924,9 +2091,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             """;
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
-        // An empty index counts nothing under any field set; recording the current one keeps the next open from
-        // recounting it.
+        // An empty index counts nothing under any field set and holds no terms of any analyzer; recording the
+        // current ones keeps the next open from recounting or rebuilding it.
         await WriteDocumentFrequencyFieldsKeyAsync(connection, cancellationToken).ConfigureAwait(false);
+        await WriteAnalyzerKeyAsync(connection, cancellationToken).ConfigureAwait(false);
 
         LogIndexCleared(Logger);
     }
@@ -2460,6 +2628,14 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index optimized")]
     private static partial void LogIndexOptimized(ILogger logger);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Keyword index ({Backend}) was built with a different definition ({Change}); re-tokenizing its {ChunkCount} stored chunks before first use")]
+    private static partial void LogRebuildStarted(ILogger logger, string backend, string change, long chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index ({Backend}) re-tokenized {ChunkCount} chunks with analyzer {Analyzer}")]
+    private static partial void LogRebuildCompleted(ILogger logger, string backend, int chunkCount, string analyzer);
 
     #endregion
 }

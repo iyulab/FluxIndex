@@ -4,19 +4,22 @@ using FluxIndex.Core.Application.Interfaces;
 namespace FluxIndex.Core.Application.Services.KeywordSearch;
 
 /// <summary>
-/// The analyzer the keyword index has always used: split on non-word characters, lower-case, drop
-/// tokens shorter than two characters and a small English stop-word list.
+/// Whole-word analyzer: split on non-word characters, lower-case, drop tokens shorter than two
+/// characters and a small English stop-word list. The keyword index's default before 0.93.0.
 /// </summary>
 /// <remarks>
 /// Word characters include every letter the runtime knows, so a Korean, Japanese or Chinese run
 /// stays one token per whitespace-delimited word (<c>규정에</c> and <c>규정</c> are different terms
-/// here). Use <see cref="CjkBigramTextAnalyzer"/> — or register your own <see cref="ITextAnalyzer"/>
-/// — for text where that loses recall.
+/// here), which loses recall on that text. The default, <see cref="CjkBigramTextAnalyzer"/>, treats
+/// Latin text the same way and CJK runs as bigrams; register this one only to keep whole CJK words.
 /// </remarks>
-public sealed partial class DefaultTextAnalyzer : ITextAnalyzer
+public sealed partial class WordTextAnalyzer : ITextAnalyzer
 {
     /// <summary>Shared instance; the analyzer holds no state.</summary>
-    public static DefaultTextAnalyzer Instance { get; } = new();
+    public static WordTextAnalyzer Instance { get; } = new();
+
+    /// <inheritdoc />
+    public string Identity => "fluxindex.word/1";
 
     /// <summary>Stop words removed during tokenization (English).</summary>
     public static IReadOnlySet<string> StopWords { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

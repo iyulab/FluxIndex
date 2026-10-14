@@ -33,10 +33,8 @@ namespace FluxIndex.SDK.Tests;
 public class UnreferencedImplementationRosterTests
 {
     // Decided: public entry points a consumer constructs itself, documented as such (README / XML doc).
-    private static readonly string[] ConsumerConstructed =
-    [
-        "FluxIndex.Core.Application.Services.KeywordSearch.CjkBigramTextAnalyzer",   // README: AddSingleton<ITextAnalyzer>(CjkBigramTextAnalyzer.Instance)
-    ];
+    // Empty since 0.93.0: CjkBigramTextAnalyzer became the keyword index's default.
+    private static readonly string[] ConsumerConstructed = [];
 
     // Undecided: each entry needs a decision — wire it, document it as consumer-constructed, or remove it.
     // Empty since 0.40.0: the first run's twelve (whole capability clusters with no registration and no caller)

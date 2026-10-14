@@ -111,12 +111,11 @@ public class SQLiteKeywordSearchServiceTests : IDisposable
     }
 
     /// <summary>
-    /// 토크나이저는 <c>\W+</c> 분할이고 .NET 에서 한글은 <c>\w</c> 다 —
-    /// 즉 한글 run 은 절대 분할되지 않는다. 부분 토큰 질의는 매치되지 않는다.
-    /// 현행 거동을 고정하는 characterization 이며, CJK 착지 시 뒤집히는 것이 정상이다.
+    /// The default analyzer (CJK bigrams since 0.93.0) splits a Hangul run, so a query for part of a compound word
+    /// matches it. Before 0.93.0 the whole-word default never split the run and this query matched nothing.
     /// </summary>
     [Fact]
-    public async Task KoreanContent_IsNotRetrievable_ByAPartialToken_Characterization()
+    public async Task KoreanContent_IsRetrievable_ByAPartialToken()
     {
         var service = CreateService();
         await service.IndexChunksAsync([Chunk("doc-ko", "착수계약서 검토 결과를 정리한 문서")], TestContext.Current.CancellationToken);
@@ -124,8 +123,7 @@ public class SQLiteKeywordSearchServiceTests : IDisposable
         var results = await service.SearchAsync("착수계", cancellationToken: TestContext.Current.CancellationToken);
         service.Dispose();
 
-        results.Should().BeEmpty(
-            "the tokenizer never splits a Hangul run, so a prefix query cannot match");
+        results.Should().ContainSingle(r => r.Chunk.DocumentId == "doc-ko");
     }
 
     /// <summary>

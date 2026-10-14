@@ -95,7 +95,8 @@ public sealed class SQLiteKeywordSearchFieldTests : KeywordSearchFieldContractSu
     public async Task TheConsumersAnalyzer_TokenizesFieldTextToo()
     {
         var analyzer = Substitute.For<ITextAnalyzer>();
-        analyzer.Tokenize(Arg.Any<string>()).Returns(ci => DefaultTextAnalyzer.Instance.Tokenize(ci.Arg<string>()));
+        analyzer.Identity.Returns("test/1");
+        analyzer.Tokenize(Arg.Any<string>()).Returns(ci => WordTextAnalyzer.Instance.Tokenize(ci.Arg<string>()));
         using var service = Create(NewPath(), fields: null, analyzer);
 
         await service.IndexChunksAsync([Chunk("c", "transaction boundaries", ("title", "ledger design"))], TestContext.Current.CancellationToken);

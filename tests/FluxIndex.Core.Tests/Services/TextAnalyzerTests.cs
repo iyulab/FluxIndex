@@ -5,7 +5,7 @@ using Xunit;
 namespace FluxIndex.Core.Tests.Services;
 
 /// <summary>
-/// The two built-in <c>ITextAnalyzer</c>s. <see cref="DefaultTextAnalyzer"/> must be exactly what
+/// The two built-in <c>ITextAnalyzer</c>s. <see cref="WordTextAnalyzer"/> must be exactly what
 /// the keyword index did before the seam existed (an existing index keeps matching);
 /// <see cref="CjkBigramTextAnalyzer"/> is the opt-in that lets a bare CJK stem match its inflected
 /// forms — the defect measured on a production corpus where <c>규정에</c> (115) outnumbered
@@ -16,7 +16,7 @@ public class TextAnalyzerTests
     [Fact]
     public void Default_SplitsOnNonWord_LowerCases_DropsShortTokensAndEnglishStopWords()
     {
-        DefaultTextAnalyzer.Instance.Tokenize("The Quick brown-fox, is at a 42nd Base!")
+        WordTextAnalyzer.Instance.Tokenize("The Quick brown-fox, is at a 42nd Base!")
             .Should().Equal("quick", "brown", "fox", "42nd", "base");
     }
 
@@ -24,7 +24,7 @@ public class TextAnalyzerTests
     public void Default_KeepsACjkWordAsOneTerm()
     {
         // The behaviour a CJK consumer hit: the inflected form and the stem are unrelated terms.
-        DefaultTextAnalyzer.Instance.Tokenize("규정에 따라 규정 적용").Should().Equal("규정에", "따라", "규정", "적용");
+        WordTextAnalyzer.Instance.Tokenize("규정에 따라 규정 적용").Should().Equal("규정에", "따라", "규정", "적용");
     }
 
     [Theory]
@@ -33,7 +33,7 @@ public class TextAnalyzerTests
     [InlineData("   ")]
     public void Both_ReturnNothingForBlankInput(string? text)
     {
-        DefaultTextAnalyzer.Instance.Tokenize(text!).Should().BeEmpty();
+        WordTextAnalyzer.Instance.Tokenize(text!).Should().BeEmpty();
         CjkBigramTextAnalyzer.Instance.Tokenize(text!).Should().BeEmpty();
     }
 

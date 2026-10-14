@@ -417,18 +417,24 @@ A term's rarity comes from the index's own statistics in one call:
 
 What counts as a term is an `ITextAnalyzer` — tokenization, stop words and minimum token length as
 one unit — and the relational keyword backends use the same instance on the index path and the
-query path, so the two cannot drift apart. Nothing registered means `DefaultTextAnalyzer` (split on
-non-word characters, lower-case, drop one-character tokens and English stop words). For Korean,
-Japanese or Chinese text that analyzer keeps every whitespace-delimited word as one term, so a bare
-stem in the query does not match its inflected forms in the index; `CjkBigramTextAnalyzer` emits
-overlapping character bigrams for CJK runs (Latin handled as before) and needs no morphological
-analyzer:
+query path, so the two cannot drift apart. Nothing registered means `CjkBigramTextAnalyzer` (since
+0.93.0): Latin text is split on non-word characters, lower-cased, with one-character tokens and
+English stop words dropped; a Korean, Japanese or Chinese run becomes overlapping character bigrams,
+so a bare stem in the query matches its inflected forms in the index (`규정` ⊂ `규정에`) without a
+morphological analyzer. On Korean MIRACL (43,293 passages) it scores nDCG@10 0.408 against 0.290 for
+whole words. `WordTextAnalyzer` keeps every whitespace-delimited word as one term (the default
+before 0.93.0); register it, or your own analyzer, to change what a term is:
 
 ```csharp
-services.AddSingleton<ITextAnalyzer>(CjkBigramTextAnalyzer.Instance);   // before AddSQLiteKeywordSearch / AddPostgreSQLKeywordSearch
+services.AddSingleton<ITextAnalyzer>(WordTextAnalyzer.Instance);   // before AddSQLiteKeywordSearch / AddPostgreSQLKeywordSearch
 ```
 
-Switching the analyzer of an existing index changes what a query can match — re-index afterwards.
+The index records the analyzer's `Identity` (`fluxindex.cjk-bigram/1`, `fluxindex.word/1`). Opened
+with an analyzer of another identity — or, once, an index written before 0.93.0, which records none
+— it re-tokenizes its stored chunks from their stored text before first use (a warning names the
+change; it costs about as long as indexing the keyword leg, and nothing is re-embedded), so
+switching needs no manual re-index. A custom `ITextAnalyzer` names itself through `Identity`: change
+the name whenever the same text would produce different terms.
 The in-memory `BM25SparseRetriever` fallback and the sqlite-vec store's native FTS5 leg have their
 own tokenization and are not affected.
 
@@ -451,7 +457,8 @@ services.AddSingleton(KeywordFieldOptions.None);      // body-only, the behavior
 The index path and the query path share one instance, and fields are analyzed by the same
 `ITextAnalyzer` as the body. Field postings live in their own relation, created on first use, so an
 existing database needs no migration and ranks exactly as before until its chunks are re-indexed;
-changing the field set is like changing the analyzer — re-index the keyword leg afterwards. Document
+changing the field set later re-tokenizes the stored chunks on the next open, like changing the
+analyzer (since 0.93.0). Document
 frequency counts a chunk once however many fields carry the term. The in-memory `BM25SparseRetriever`
 and the sqlite-vec FTS5 leg are not affected.
 

@@ -5,6 +5,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Breaking** — **The keyword index splits Korean, Japanese and Chinese text into character bigrams by default.**
+  With no `ITextAnalyzer` registered it used to keep every whitespace-delimited word as one term, so a query's bare stem
+  (`규정`) never matched its inflected forms (`규정에`, `규정을`); on Korean MIRACL that default scored nDCG@10 0.290
+  against 0.408 for the bigram analyzer. The default is now `CjkBigramTextAnalyzer`; Latin text is tokenized as before.
+  `DefaultTextAnalyzer` is renamed `WordTextAnalyzer` — migration: register `WordTextAnalyzer.Instance` to keep whole
+  words.
+- **Breaking** — **The keyword index rebuilds its terms when it is opened with another analyzer or field set.** It stored
+  terms analyzed at write time and queried with whatever analyzer was registered now, so changing the analyzer (or
+  `KeywordFieldOptions`) on an existing index left old chunks unmatchable by the new terms, with no error. The index now
+  records its analyzer and field set; opened with different ones it re-tokenizes its stored chunks from their stored
+  text before first use (logged as a warning; nothing is re-embedded). An index written by an earlier release records no
+  analyzer and is rebuilt once on first open. `ITextAnalyzer` gains `Identity` — migration: a custom analyzer returns a
+  stable name and changes it whenever its output would change.
+
 ## [0.92.0] - 2026-10-14
 
 ### Changed
