@@ -503,6 +503,26 @@ var results = await context.Retriever.SearchAsync("quarterly report", new Search
 });
 ```
 
+A collection value matches **any** of its elements — «only these files», «any of these tags» — and
+`FilterKeys.DocumentId` scopes to documents by their own id:
+
+```csharp
+var selected = await context.Retriever.SearchAsync("quarterly report", new SearchOptions
+{
+    TopK = 10,
+    UseReranker = true,
+    MetadataFilters =
+    {
+        ["workspace_id"] = "ws-a",
+        [FilterKeys.DocumentId] = new[] { "doc-1", "doc-7", "doc-9" }
+    }
+});
+```
+
+With a cache registered, `Retriever.SearchAsync` caches the fused results per scope on the hybrid path as on the
+vector path (`WithCacheDuration`; every indexer write invalidates them); the reranker and the retrieval guard run on
+every call.
+
 > ⚠️ **Changed in 0.25.0.** Before this, `MetadataFilters` was honoured by vector-only search and
 > **dropped on the hybrid path** — turning hybrid search on silently widened results to the whole
 > index. If you worked around it, the workaround is no longer needed. The same applies to Qdrant's

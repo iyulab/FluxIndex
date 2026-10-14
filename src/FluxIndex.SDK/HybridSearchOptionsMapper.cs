@@ -39,6 +39,6 @@ internal static class HybridSearchOptionsMapper
     /// </remarks>
     private static Dictionary<string, object> ToCoreFilters(SearchOptions options)
         => options.MetadataFilters?.Count > 0
-            ? options.MetadataFilters.ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value)
+            ? new Dictionary<string, object>(options.MetadataFilters)
             : [];
 }

@@ -515,9 +515,10 @@ public partial class Retriever
                 "and query it with IGraphRAGService.QueryAsync.");
         }
 
-        // Convert metadata filters to object dictionary
+        // A filter outside the contract fails here, before any work, on every path alike.
+        Core.Application.Services.Base.VectorStoreBase.ValidateFilters(options.MetadataFilters);
         var filter = options.MetadataFilters?.Count > 0
-            ? options.MetadataFilters.ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value)
+            ? new Dictionary<string, object>(options.MetadataFilters)
             : null;
 
         List<SearchResult> results;
@@ -526,29 +527,7 @@ public partial class Retriever
         if (useHybridSearch && _hybridSearchService != null)
         {
             LogHybridSearchActivated(_logger, query);
-
-            var hybridOptions = HybridSearchOptionsMapper.FromSearchOptions(options);
-            hybridOptions.MaxResults = fetchCount;
-            var hybridResults = await _hybridSearchService.SearchAsync(query, hybridOptions, cancellationToken);
-
-            WarnIfSparseLegContributedNothing(hybridResults, query);
-
-            results = hybridResults.Select(r =>
-            {
-                var metadata = r.Chunk.Metadata ?? new();
-                EnsureStandardMetadata(metadata, r.Chunk.ChunkIndex, r.Chunk.TotalChunks, r.Chunk.TokenCount);
-                return new SearchResult
-                {
-                    Id = r.Chunk.Id,
-                    DocumentId = r.Chunk.DocumentId,
-                    Content = r.Chunk.Content,
-                    Score = (float)r.FusedScore,
-                    VectorScore = (float)r.VectorScore,
-                    KeywordScore = (float)r.SparseScore,
-                    ChunkIndex = r.Chunk.ChunkIndex,
-                    Metadata = metadata
-                };
-            }).ToList();
+            results = await HybridSearchResolvedAsync(query, options, fetchCount, cancellationToken);
         }
         // Default: Vector-only search
         else
@@ -604,6 +583,61 @@ public partial class Retriever
                 ["graphRAGAvailable"] = SupportsGraphRAG
             }
         };
+    }
+
+    /// <summary>
+    /// The unguarded hybrid core of <see cref="SearchAsync(string, SearchOptions?, CancellationToken)"/>: the fused results
+    /// before the retrieval guard and the reranker, read from and stored in the search cache like the vector path's
+    /// (<see cref="RetrieverOptions.CacheDuration"/>, invalidated by every indexer write). The key carries the filter's scope
+    /// (<see cref="Core.Application.Interfaces.FilterScope"/>), so a scoped search is cached per scope.
+    /// </summary>
+    private async Task<List<SearchResult>> HybridSearchResolvedAsync(
+        string query,
+        SearchOptions options,
+        int fetchCount,
+        CancellationToken cancellationToken)
+    {
+        // Computed once, with the generation current now — as in SearchResolvedAsync.
+        string? cacheKey = null;
+        if (_cacheService != null)
+        {
+            var generation = await SearchCacheKeys.CurrentGenerationAsync(_cacheService, cancellationToken);
+            cacheKey = SearchCacheKeys.HybridSearch(generation, query, fetchCount, options);
+            var cached = await _cacheService.GetAsync<List<SearchResult>>(cacheKey, cancellationToken);
+            if (cached != null)
+            {
+                LogCacheHit(_logger, query);
+                return cached;
+            }
+        }
+
+        var hybridOptions = HybridSearchOptionsMapper.FromSearchOptions(options);
+        hybridOptions.MaxResults = fetchCount;
+        var hybridResults = await _hybridSearchService!.SearchAsync(query, hybridOptions, cancellationToken);
+
+        WarnIfSparseLegContributedNothing(hybridResults, query);
+
+        var results = hybridResults.Select(r =>
+        {
+            var metadata = r.Chunk.Metadata ?? new();
+            EnsureStandardMetadata(metadata, r.Chunk.ChunkIndex, r.Chunk.TotalChunks, r.Chunk.TokenCount);
+            return new SearchResult
+            {
+                Id = r.Chunk.Id,
+                DocumentId = r.Chunk.DocumentId,
+                Content = r.Chunk.Content,
+                Score = (float)r.FusedScore,
+                VectorScore = (float)r.VectorScore,
+                KeywordScore = (float)r.SparseScore,
+                ChunkIndex = r.Chunk.ChunkIndex,
+                Metadata = metadata
+            };
+        }).ToList();
+
+        if (_cacheService != null && cacheKey != null && results.Count != 0)
+            await _cacheService.SetAsync(cacheKey, results, _options.CacheDuration, cancellationToken);
+
+        return results;
     }
 
     /// <summary>

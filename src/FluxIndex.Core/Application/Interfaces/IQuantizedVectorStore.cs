@@ -37,12 +37,19 @@ public interface IQuantizedVectorStore : IVectorStore
     /// <param name="queryQuantized">Quantized query vector</param>
     /// <param name="topK">Number of results to return</param>
     /// <param name="minScore">Minimum similarity score threshold</param>
+    /// <param name="filters">
+    /// Metadata filters, with the same meaning as <see cref="IVectorStore.SearchAsync"/>'s: every entry must match, a
+    /// collection value matches any of its elements, and <see cref="FilterKeys.DocumentId"/> scopes to documents. Applied
+    /// before the top-K trim, so a scoped search returns the scope's nearest chunks, not the nearest chunks that happen to
+    /// be in scope.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Matching document chunks with similarity scores</returns>
     Task<IEnumerable<(DocumentChunk Chunk, float Score)>> SearchQuantizedAsync(
         QuantizedVector queryQuantized,
         int topK = 10,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -54,6 +61,12 @@ public interface IQuantizedVectorStore : IVectorStore
     /// <param name="topK">Number of final results to return</param>
     /// <param name="candidateMultiplier">Multiplier for candidate pool size (default 3x)</param>
     /// <param name="minScore">Minimum similarity score threshold</param>
+    /// <param name="filters">
+    /// Metadata filters, with the same meaning as <see cref="IVectorStore.SearchAsync"/>'s: every entry must match, a
+    /// collection value matches any of its elements, and <see cref="FilterKeys.DocumentId"/> scopes to documents. Applied
+    /// before the top-K trim, so a scoped search returns the scope's nearest chunks, not the nearest chunks that happen to
+    /// be in scope.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Matching document chunks with accurate similarity scores</returns>
     Task<IEnumerable<(DocumentChunk Chunk, float Score)>> SearchWithRerankAsync(
@@ -62,6 +75,7 @@ public interface IQuantizedVectorStore : IVectorStore
         int topK = 10,
         int candidateMultiplier = 3,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

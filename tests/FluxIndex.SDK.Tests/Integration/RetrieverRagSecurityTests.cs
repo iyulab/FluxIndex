@@ -153,7 +153,7 @@ public class RetrieverRagSecurityTests
     {
         var store = QuantizedStore();
         ((IQuantizedVectorStore)store)
-            .SearchQuantizedAsync(Arg.Any<QuantizedVector>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>())
+            .SearchQuantizedAsync(Arg.Any<QuantizedVector>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
             .Returns([(CleanChunk(), 0.9f), (PoisonedChunk(), 0.8f)]);
         var (retriever, _) = CreateRetriever(ragSecurityPipeline: new IndirectInjectionDetector(), vectorStore: store);
 
@@ -167,7 +167,7 @@ public class RetrieverRagSecurityTests
     {
         var store = QuantizedStore();
         ((IQuantizedVectorStore)store)
-            .SearchWithRerankAsync(Arg.Any<float[]>(), Arg.Any<QuantizedVector>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>())
+            .SearchWithRerankAsync(Arg.Any<float[]>(), Arg.Any<QuantizedVector>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
             .Returns([(CleanChunk(), 0.9f), (PoisonedChunk(), 0.8f)]);
         var (retriever, _) = CreateRetriever(ragSecurityPipeline: new IndirectInjectionDetector(), vectorStore: store);
 

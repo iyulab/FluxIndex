@@ -440,11 +440,26 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         QuantizedVector queryQuantized,
         int topK = 10,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        FluxIndex.Core.Application.Services.Base.VectorStoreBase.ValidateFilters(filters);
         var quantizedEntities = await context.QuantizedVectors.ToListAsync(cancellationToken);
         if (quantizedEntities.Count == 0) return Enumerable.Empty<(DocumentChunk, float)>();
+
+        // A filter narrows the candidates before they are ranked (IVectorStore filter contract), so the top-K is the
+        // scope's nearest chunks rather than the nearest chunks that happen to fall in scope. The predicate is the one
+        // SearchAsync pushes down, so the two paths agree on what a filter admits.
+        if (filters is { Count: > 0 })
+        {
+            var inScope = (await context.Vectors
+                .Where(MetadataPredicateBuilder.Build<QuantizedVectorEntity>(filters, v => v.Metadata, v => v.DocumentId))
+                .Select(v => v.Id)
+                .ToListAsync(cancellationToken)).ToHashSet();
+            quantizedEntities = quantizedEntities.Where(e => inScope.Contains(ChunkStorageId.ToStorageGuid(e.ChunkId))).ToList();
+            if (quantizedEntities.Count == 0) return Enumerable.Empty<(DocumentChunk, float)>();
+        }
 
         // Compute distances in memory (quantized search)
         var candidates = quantizedEntities
@@ -489,17 +504,18 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         int topK = 10,
         int candidateMultiplier = 3,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
         // Phase 1: Fast quantized search
         var candidateCount = topK * candidateMultiplier;
-        var candidates = await SearchQuantizedAsync(queryQuantized, candidateCount, 0.0f, cancellationToken);
+        var candidates = await SearchQuantizedAsync(queryQuantized, candidateCount, 0.0f, filters, cancellationToken);
         var candidateList = candidates.ToList();
 
         if (candidateList.Count == 0)
         {
-            // Fallback to pgvector search
-            var fallbackResults = await SearchAsync(queryEmbedding, topK, minScore, null, cancellationToken);
+            // Fallback to pgvector search, under the same filter
+            var fallbackResults = await SearchAsync(queryEmbedding, topK, minScore, filters, cancellationToken);
             return fallbackResults.Select(c => (c, ComputeCosineSimilarity(queryEmbedding, c.Embedding ?? Array.Empty<float>())));
         }
 

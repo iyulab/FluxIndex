@@ -292,48 +292,53 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
         QuantizedVector queryQuantized,
         int topK = 10,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
+        Base.VectorStoreBase.ValidateFilters(filters);
+        var matcher = Base.MetadataFilterMatcher.Compile(filters);
+
         if (_quantizedEmbeddings.IsEmpty)
         {
             LogNoQuantizedEmbeddings(_logger);
             return Enumerable.Empty<(DocumentChunk, float)>();
         }
 
-        // Compute distances to all quantized vectors
-        var candidates = new List<(string Id, float Distance)>();
-
-        foreach (var kvp in _quantizedEmbeddings)
-        {
-            var distance = _quantizer.ComputeDistance(queryQuantized, kvp.Value);
-            candidates.Add((kvp.Key, distance));
-        }
-
-        // Sort by distance (lower is better) and convert to similarity score
-        var topCandidates = candidates
+        // Compute distances to all quantized vectors, nearest first (lower is better)
+        var candidates = _quantizedEmbeddings
+            .Select(kvp => (Id: kvp.Key, Distance: _quantizer.ComputeDistance(queryQuantized, kvp.Value)))
             .OrderBy(c => c.Distance)
-            .Take(topK * 2) // Get extra candidates for filtering
             .ToList();
 
-        // Fetch chunks and compute similarity scores
+        // Fetch chunks in distance order until enough of them pass the filter. The embeddings held here carry no
+        // metadata, so a filter is checked on the fetched chunk; without one the first page is the whole answer, as before.
+        var wanted = topK * 2;
+        var pageSize = matcher.IsMatchAll ? wanted : Math.Max(wanted, 64);
         var results = new List<(DocumentChunk Chunk, float Score)>();
-        var chunkIds = topCandidates.Select(c => c.Id).ToList();
-        var chunks = await _innerStore.GetChunksByIdsAsync(chunkIds, cancellationToken);
-        var chunkDict = chunks.ToDictionary(c => c.Id ?? "", c => c);
-
-        foreach (var candidate in topCandidates)
+        for (var offset = 0; offset < candidates.Count && results.Count < wanted; offset += pageSize)
         {
-            if (!chunkDict.TryGetValue(candidate.Id, out var chunk)) continue;
+            var page = candidates.Skip(offset).Take(pageSize).ToList();
+            var chunks = await _innerStore.GetChunksByIdsAsync(page.Select(c => c.Id).ToList(), cancellationToken);
+            var chunkDict = chunks.ToDictionary(c => c.Id ?? "", c => c);
 
-            // Convert distance to similarity score (assuming normalized vectors)
-            // For cosine distance: similarity = 1 - distance
-            // For euclidean: similarity = 1 / (1 + distance)
-            var score = ConvertDistanceToScore(candidate.Distance);
-
-            if (score >= minScore)
+            foreach (var candidate in page)
             {
-                results.Add((chunk, score));
+                if (!chunkDict.TryGetValue(candidate.Id, out var chunk)) continue;
+                if (!matcher.Matches(chunk.DocumentId, chunk.Metadata)) continue;
+
+                // Convert distance to similarity score (assuming normalized vectors)
+                // For cosine distance: similarity = 1 - distance
+                // For euclidean: similarity = 1 / (1 + distance)
+                var score = ConvertDistanceToScore(candidate.Distance);
+
+                if (score >= minScore)
+                {
+                    results.Add((chunk, score));
+                }
             }
+
+            if (matcher.IsMatchAll)
+                break;
         }
 
         return results
@@ -347,17 +352,18 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
         int topK = 10,
         int candidateMultiplier = 3,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
         // Phase 1: Fast quantized search to get candidates
         var candidateCount = topK * candidateMultiplier;
-        var candidates = await SearchQuantizedAsync(queryQuantized, candidateCount, 0.0f, cancellationToken);
+        var candidates = await SearchQuantizedAsync(queryQuantized, candidateCount, 0.0f, filters, cancellationToken);
         var candidateList = candidates.ToList();
 
         if (candidateList.Count == 0)
         {
-            // Fallback to original search
-            var fallbackResults = await _innerStore.SearchAsync(queryEmbedding, topK, minScore, filters: null, cancellationToken);
+            // Fallback to original search, under the same filter
+            var fallbackResults = await _innerStore.SearchAsync(queryEmbedding, topK, minScore, filters, cancellationToken);
             return fallbackResults.Select(c => (c, ComputeCosineSimilarity(queryEmbedding, c.Embedding ?? Array.Empty<float>())));
         }
 

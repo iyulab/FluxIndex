@@ -78,7 +78,7 @@ public class HybridSearchOptionsMapperTests
         var options = new SearchOptions
         {
             TopK = 10,
-            MetadataFilters = new Dictionary<string, string> { ["workspace_id"] = "ws-a" }
+            MetadataFilters = new Dictionary<string, object> { ["workspace_id"] = "ws-a" }
         };
 
         var core = HybridSearchOptionsMapper.FromSearchOptions(options);

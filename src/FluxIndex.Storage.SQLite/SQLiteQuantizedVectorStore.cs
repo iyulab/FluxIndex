@@ -449,13 +449,24 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         QuantizedVector queryQuantized,
         int topK = 10,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        Core.Application.Services.Base.VectorStoreBase.ValidateFilters(filters);
         await EnsureInitializedAsync(cancellationToken);
 
         var quantizedEntities = await context.QuantizedVectors.ToListAsync(cancellationToken);
         if (quantizedEntities.Count == 0) return Enumerable.Empty<(DocumentChunk, float)>();
+
+        // A filter narrows the candidates before they are ranked (IVectorStore filter contract), so the top-K is the
+        // scope's nearest chunks rather than the nearest chunks that happen to fall in scope.
+        var inScope = await ChunkIdsMatchingAsync(context, filters, cancellationToken);
+        if (inScope != null)
+        {
+            quantizedEntities = quantizedEntities.Where(e => inScope.Contains(e.ChunkId)).ToList();
+            if (quantizedEntities.Count == 0) return Enumerable.Empty<(DocumentChunk, float)>();
+        }
 
         // Compute distances and rank
         var candidates = quantizedEntities
@@ -495,19 +506,20 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         int topK = 10,
         int candidateMultiplier = 3,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
 
         // Phase 1: Fast quantized search
         var candidateCount = topK * candidateMultiplier;
-        var candidates = await SearchQuantizedAsync(queryQuantized, candidateCount, 0.0f, cancellationToken);
+        var candidates = await SearchQuantizedAsync(queryQuantized, candidateCount, 0.0f, filters, cancellationToken);
         var candidateList = candidates.ToList();
 
         if (candidateList.Count == 0)
         {
-            // Fallback to original search
-            var fallbackResults = await SearchAsync(queryEmbedding, topK, minScore, null, cancellationToken);
+            // Fallback to original search, under the same filter
+            var fallbackResults = await SearchAsync(queryEmbedding, topK, minScore, filters, cancellationToken);
             return fallbackResults.Select(c => (c, ComputeCosineSimilarity(queryEmbedding, c.Embedding ?? Array.Empty<float>())));
         }
 
@@ -524,6 +536,34 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
             .Take(topK);
 
         return reranked;
+    }
+
+    /// <summary>
+    /// The ids of the stored chunks that <paramref name="filters"/> admits, or null when there is no filter. A document
+    /// scope is resolved through the DocumentId index first, as in <see cref="SearchAsync"/>.
+    /// </summary>
+    private static async Task<HashSet<string>?> ChunkIdsMatchingAsync(
+        SQLiteQuantizedDbContext context,
+        Dictionary<string, object>? filters,
+        CancellationToken cancellationToken)
+    {
+        var matcher = Core.Application.Services.Base.MetadataFilterMatcher.Compile(filters);
+        if (matcher.IsMatchAll)
+            return null;
+
+        var vectors = context.Vectors.AsQueryable();
+        if (matcher.DocumentIds is { } documentScope)
+        {
+            var scope = documentScope.ToList();
+            vectors = vectors.Where(v => scope.Contains(v.DocumentId));
+        }
+
+        var entities = await vectors.ToListAsync(cancellationToken);
+        return entities
+            .Select(MapToChunk)
+            .Where(chunk => matcher.Matches(chunk.DocumentId, chunk.Metadata))
+            .Select(chunk => chunk.Id)
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     public async Task<QuantizedVector?> GetQuantizedEmbeddingAsync(

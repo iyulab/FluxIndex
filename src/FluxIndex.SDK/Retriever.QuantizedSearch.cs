@@ -126,7 +126,7 @@ public partial class Retriever
 
             // Search with quantized vectors
             var results = await _quantizedVectorStore.SearchQuantizedAsync(
-                quantizedQuery, maxResults, minScore, cancellationToken);
+                quantizedQuery, maxResults, minScore, filters: null, cancellationToken);
 
             var searchResults = results.Select((r, index) => new VectorSearchResult
             {
@@ -289,7 +289,7 @@ public partial class Retriever
 
             // Search with rerank
             var results = await _quantizedVectorStore.SearchWithRerankAsync(
-                queryEmbedding, quantizedQuery, maxResults, candidateMultiplier, minScore, cancellationToken);
+                queryEmbedding, quantizedQuery, maxResults, candidateMultiplier, minScore, filters: null, cancellationToken);
 
             progress?.Report(new SearchProgress
             {

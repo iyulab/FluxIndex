@@ -350,12 +350,17 @@ public partial class HybridSearchService : IHybridSearchService
                 LogHybridSearch4(_logger, legSize, options.QuantizedCandidateMultiplier);
 
             // Two-Stage 검색: 양자화 검색 후 원본 벡터로 리랭킹
+            // The same filters the plain vector leg applies: a quantized leg must not widen the search's scope.
+            var filters = options.EffectiveVectorFilters is { Count: > 0 } effective
+                ? new Dictionary<string, object>(effective)
+                : null;
             var results = await quantizedStore.SearchWithRerankAsync(
                 embedding,
                 quantizedQuery,
                 legSize,
                 options.QuantizedCandidateMultiplier,
                 options.QuantizedMinScore,
+                filters,
                 cancellationToken);
 
             return results;

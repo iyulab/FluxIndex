@@ -561,9 +561,10 @@ var options = new SearchOptions
     TopK = 10,
     MinSimilarity = 0.5f,
     UseHybridSearch = true,
-    MetadataFilters = new Dictionary<string, string>
+    MetadataFilters = new Dictionary<string, object>
     {
-        ["category"] = "technical"
+        ["category"] = "technical",
+        ["tag"] = new[] { "api", "sdk" }   // a collection matches any of its elements
     }
 };
 

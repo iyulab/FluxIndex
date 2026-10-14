@@ -5,6 +5,36 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Added
+- **`SearchOptions.MetadataFilters` takes a collection, matching any of its elements.** A search scoped to «these
+  documents» or «any of these tags» runs through `Retriever.SearchAsync` — with its reranker and cache — instead of a
+  direct `IHybridSearchService` call: `MetadataFilters = { [FilterKeys.DocumentId] = new[] { "doc-1", "doc-7" } }`. A scalar
+  matches as before; a value outside the filter contract (an object, an empty or nested collection) throws
+  `ArgumentException` when the search starts. **Breaking**: the property is `Dictionary<string, object>` (was
+  `Dictionary<string, string>`) — migration: write `new Dictionary<string, object>` where you built the dictionary, and
+  cast where you read values back.
+- **`Retriever.SearchAsync(query, SearchOptions)` caches hybrid results per scope**, as it already did on the vector path:
+  the search cache (on by default, `RetrieverOptions.CacheDuration`, `CacheOptions.EnableSearchCache`) now keys the fused
+  results by query, scope and fusion settings, and every write through the indexer invalidates them. The reranker and the
+  retrieval guard still run on every call. As on the vector path, a write that bypasses the indexer is not seen until the
+  entry expires — turn the cache off with `EnableSearchCache = false` if you write to the store directly.
+- **`FilterScope.Of(filters)` names the scope a metadata filter selects** — the same name however the filter is written
+  (key order, a scalar or a one-element list, duplicates), a different name for a different scope. The search cache keys
+  by it; use it to key anything you cache per scope.
+
+### Fixed
+- **Breaking** — **A hybrid search with `UseQuantizedSearch` keeps its filter.** The quantized vector leg took no filter,
+  so a scoped search returned chunks from outside its scope (another tenant's, another workspace's). `IQuantizedVectorStore
+  .SearchQuantizedAsync` and `.SearchWithRerankAsync` take `filters` (before the token) and apply them before ranking, in
+  the SQLite and PostgreSQL quantized stores and the quantized decorator alike; the hybrid service passes the vector leg's
+  filter. Migration: an `IQuantizedVectorStore` implementation adds the parameter and applies it; a caller that passed the
+  token by position names it (`cancellationToken: ct`).
+- **Two searches whose filters held different collections under one key no longer share a cache entry.** The search cache
+  key printed each filter value, and every `List<string>` prints as the same type name, so the filter overload of
+  `Retriever.SearchAsync` answered the second scope with the first scope's cached results.
+
 ## [0.93.0] - 2026-10-15
 
 ### Changed

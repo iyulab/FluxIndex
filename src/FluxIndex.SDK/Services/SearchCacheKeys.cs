@@ -23,11 +23,19 @@ internal static class SearchCacheKeys
 
     public static string Document(string documentId) => $"doc:{documentId}";
 
+    // The filter enters a key as its scope's name (FilterScope): entry order and how a value is spelled (a scalar or a
+    // one-element list) do not split one scope, and two collections can never share a key — printing a value would give
+    // every List<string> the same «System.Collections.Generic.List`1[System.String]».
     public static string Search(string generation, string query, int maxResults, float minScore, Dictionary<string, object>? filter)
-    {
-        var filterStr = filter != null ? string.Join(",", filter.Select(kvp => $"{kvp.Key}:{kvp.Value}")) : "";
-        return $"search:{generation}:{query}:{maxResults}:{minScore}:{filterStr}";
-    }
+        => FormattableString.Invariant($"search:{generation}:{FilterScope.Of(filter)}:{maxResults}:{minScore}:{query}");
+
+    /// <summary>
+    /// The key of a hybrid search's results: everything <see cref="HybridSearchOptionsMapper"/> carries to the hybrid
+    /// service, so two searches share an entry only when the service would see the same request.
+    /// </summary>
+    public static string HybridSearch(string generation, string query, int fetchCount, SearchOptions options)
+        => FormattableString.Invariant(
+            $"hsearch:{generation}:{FilterScope.Of(options.MetadataFilters)}:{fetchCount}:{options.MinSimilarity}:{options.VectorWeight}:{options.KeywordWeight}:{options.FusionMethod}:{options.RrfK}:{query}");
 
     public static async Task<string> CurrentGenerationAsync(ICacheService cache, CancellationToken cancellationToken)
     {

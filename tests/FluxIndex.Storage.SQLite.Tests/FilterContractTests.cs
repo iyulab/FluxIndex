@@ -58,3 +58,27 @@ public class SQLiteQuantizedVectorStoreFilterContractTests : VectorStoreFilterCo
             new DelegateDbContextFactory<SQLiteQuantizedDbContext>(() => new SQLiteQuantizedDbContext(dbOptions, options)), quantizer, NullLogger<SQLiteQuantizedVectorStore>.Instance, options);
     }
 }
+
+/// <summary>
+/// Runs the quantized-path filter contract against SQLiteQuantizedVectorStore — its quantized searches used to take no
+/// filter, so a scoped hybrid search with <c>UseQuantizedSearch</c> returned chunks from outside the scope.
+/// </summary>
+[Collection("SQLite Tests")]
+public class SQLiteQuantizedVectorStoreQuantizedFilterContractTests : QuantizedVectorStoreFilterContractSuite
+{
+    protected override async Task<IQuantizedVectorStore> CreateStoreAsync()
+    {
+        var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+
+        var options = Options.Create(new SQLiteQuantizedOptions());
+        var dbOptions = new DbContextOptionsBuilder<SQLiteQuantizedDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        var context = new SQLiteQuantizedDbContext(dbOptions, options);
+        await context.Database.EnsureCreatedAsync();
+
+        return new SQLiteQuantizedVectorStore(
+            new DelegateDbContextFactory<SQLiteQuantizedDbContext>(() => new SQLiteQuantizedDbContext(dbOptions, options)), Quantizer, NullLogger<SQLiteQuantizedVectorStore>.Instance, options);
+    }
+}

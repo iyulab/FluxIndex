@@ -49,7 +49,13 @@ public class SearchOptions
     /// 결과에 벡터가 필요하면 저장소(<c>IVectorStore</c>)에서 청크를 직접 읽는다.
     /// </summary>
     public bool IncludeVectors { get; set; }
-    public Dictionary<string, string> MetadataFilters { get; set; } = new();
+    /// <summary>
+    /// Metadata conditions every result must meet, applied on the vector and the keyword leg alike. A scalar value matches
+    /// that value; a collection matches any of its elements (<c>["tag"] = new[] { "a", "b" }</c>); the key
+    /// <see cref="Core.Application.Interfaces.FilterKeys.DocumentId"/> scopes to documents. A value of another shape (an
+    /// object, a nested or empty collection) throws <see cref="ArgumentException"/> when the search starts.
+    /// </summary>
+    public Dictionary<string, object> MetadataFilters { get; set; } = new();
 
     /// <summary>
     /// GraphRAG 검색 요청.

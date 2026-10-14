@@ -186,7 +186,7 @@ public sealed class PostgreSQLQuantizedDeleteTests : IAsyncLifetime
     private async Task<List<string>> SearchQuantizedIdsAsync(CancellationToken ct)
     {
         var query = await _quantizer.QuantizeAsync(Embedding(0), ct);
-        var results = await _store.SearchQuantizedAsync(query, topK: 10, minScore: 0f, ct);
+        var results = await _store.SearchQuantizedAsync(query, topK: 10, minScore: 0f, cancellationToken: ct);
         return results.Select(r => r.Chunk.Id!).ToList();
     }
 

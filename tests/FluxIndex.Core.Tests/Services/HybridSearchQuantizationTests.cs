@@ -165,6 +165,7 @@ public class HybridSearchQuantizationTests
                 10,
                 3,
                 0.0f,
+                Arg.Any<Dictionary<string, object>?>(),
                 Arg.Any<CancellationToken>()).Returns(searchResults);
 
         _mockKeywordSearchService.SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<KeywordSearchResult>());
@@ -197,10 +198,52 @@ public class HybridSearchQuantizationTests
             Arg.Any<int>(),
             3,
             0.0f,
+            Arg.Any<Dictionary<string, object>?>(),
             Arg.Any<CancellationToken>());
 
         Assert.Equal(2, results.Count);
         Assert.Equal("chunk1", results[0].Chunk.Id);
+    }
+
+    [Fact]
+    public async Task SearchAsync_QuantizedPath_CarriesTheSearchFilterToTheStore()
+    {
+        // The quantized vector leg took no filter, so a scoped hybrid search with UseQuantizedSearch returned chunks from
+        // outside its scope. It must reach the store exactly as the plain vector leg does.
+        var mockQuantizedStore = Substitute.For<IQuantizedVectorStore, IVectorStore>();
+        var query = "test query";
+        var embedding = new float[] { 0.1f, 0.2f, 0.3f };
+        var quantizedVector = new QuantizedVector
+        {
+            Type = QuantizationType.ScalarInt8,
+            Data = new byte[] { 128, 64, 192 },
+            OriginalDimension = 3
+        };
+
+        _mockEmbeddingService.GenerateQueryEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
+        _mockQuantizer.QuantizeAsync(embedding, Arg.Any<CancellationToken>()).Returns(quantizedVector);
+        mockQuantizedStore.SearchWithRerankAsync(
+                Arg.Any<float[]>(), Arg.Any<QuantizedVector>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<float>(),
+                Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
+            .Returns(new List<(DocumentChunk Chunk, float Score)>());
+        _mockKeywordSearchService.SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<KeywordSearchResult>());
+
+        var service = new HybridSearchService(
+            (IVectorStore)mockQuantizedStore, _mockKeywordSearchService, _mockEmbeddingService, _logger, _mockQuantizer);
+
+        await service.SearchAsync(query, new HybridSearchOptions
+        {
+            UseQuantizedSearch = true,
+            Filters = new Dictionary<string, object> { ["tenant"] = "tenant-a" },
+            FusionMethod = FusionMethod.RelativeScoreFusion,
+            VectorWeight = 0.7,
+            SparseWeight = 0.3
+        }, TestContext.Current.CancellationToken);
+
+        await mockQuantizedStore.Received(1).SearchWithRerankAsync(
+            Arg.Any<float[]>(), Arg.Any<QuantizedVector>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<float>(),
+            Arg.Is<Dictionary<string, object>?>(f => f != null && f.Count == 1 && Equals(f["tenant"], "tenant-a")),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -251,6 +294,7 @@ public class HybridSearchQuantizationTests
             Arg.Any<int>(),
             Arg.Any<int>(),
             Arg.Any<float>(),
+            Arg.Any<Dictionary<string, object>?>(),
             Arg.Any<CancellationToken>());
 
         await ((IVectorStore)mockQuantizedStore).Received(1).SearchAsync(
@@ -346,6 +390,7 @@ public class HybridSearchQuantizationTests
                 Arg.Any<int>(),
                 5, // Custom multiplier
                 Arg.Any<float>(),
+                Arg.Any<Dictionary<string, object>?>(),
                 Arg.Any<CancellationToken>()).Returns(new List<(DocumentChunk, float)>());
 
         _mockKeywordSearchService.SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<KeywordSearchResult>());
@@ -377,6 +422,7 @@ public class HybridSearchQuantizationTests
             Arg.Any<int>(),
             5, // Verify custom multiplier was used
             Arg.Any<float>(),
+            Arg.Any<Dictionary<string, object>?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -405,6 +451,7 @@ public class HybridSearchQuantizationTests
                 Arg.Any<int>(),
                 Arg.Any<int>(),
                 0.5f, // Custom min score
+                Arg.Any<Dictionary<string, object>?>(),
                 Arg.Any<CancellationToken>()).Returns(new List<(DocumentChunk, float)>());
 
         _mockKeywordSearchService.SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<KeywordSearchResult>());
@@ -436,6 +483,7 @@ public class HybridSearchQuantizationTests
             Arg.Any<int>(),
             Arg.Any<int>(),
             0.5f, // Verify custom min score was used
+            Arg.Any<Dictionary<string, object>?>(),
             Arg.Any<CancellationToken>());
     }
 
