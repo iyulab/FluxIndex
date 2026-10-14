@@ -8,6 +8,8 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [Unreleased]
 
 ### Documentation
+- **`docs/QUALITY-BENCHMARKS.md` names the public benchmarks for retrieval quality**: MTEB(kor, v2) led by MIRACL-ko
+  (nDCG@10, Recall@100 against the BM25 baseline), MIRACLReranking for the reranker, BEIR for English.
 - **Every C# example in `docs/` compiles as its guide assembles it** — the design document and the documentation index
   are now compiled too. The «Storage Modes» example in `docs/README.md` declared `var ctx` twice in one block, so a reader
   who copied it got a compile error; the two contexts are now `local` and `production`.

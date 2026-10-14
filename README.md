@@ -539,6 +539,7 @@ dotnet add package FluxIndex.Integrations.WebFlux    # web crawling (optional)
 - [Reference](./docs/REFERENCE.md) - Architecture and API reference
 - [Advanced RAG](./docs/ADVANCED_RAG.md) - GraphRAG (including graph store partitions for several tenants in one store), Self-RAG, Corrective RAG, Contextual Retrieval
 - [Philosophy](./docs/FLUXINDEX_PHILOSOPHY.md) - Core principles and design philosophy
+- [Quality Benchmarks](./docs/QUALITY-BENCHMARKS.md) - The public benchmarks that measure retrieval quality (Korean: MTEB(kor), MIRACL-ko)
 
 ## Examples
 
