@@ -39,6 +39,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `HybridSearchService(vectorStore, keywordSearch, embedding, logger, quantizer = null, dynamicFusion = null)`;
   migration: move the logger before them. The four-argument constructor is unchanged.
 
+### Dependencies
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.120.0 -> 0.121.0, `LMSupply.Generator` 0.120.0 -> 0.121.0, `LMSupply.Reranker` 0.120.0 -> 0.121.0.
+
 ## [0.92.0] - 2026-10-14
 
 ### Changed
