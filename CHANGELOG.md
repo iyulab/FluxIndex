@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.92.0] - Unreleased
+## [0.92.0] - 2026-10-14
 
 ### Changed
 - **Breaking** — **`Indexer.IndexBatchAsync` no longer drops a document it could not index without telling the caller.**
