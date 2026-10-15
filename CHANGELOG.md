@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.95.0] - 2026-10-15
 
 ### Added
 - **FluxIndex takes a `Microsoft.Extensions.AI` embedding generator directly.** `FluxIndexContext.CreateBuilder()
