@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.99.0] - 2026-10-16
 
 ### Changed
 - **Breaking: the PostgreSQL, plain SQLite and in-memory vector stores refuse a model other than the one their vectors
