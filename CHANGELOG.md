@@ -16,7 +16,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   models' vectors in one table. A store that holds vectors but no record (written before this release) adopts the bound
   identity with a warning; `ClearAsync` removes the record. A custom `VectorStoreBase` store gets the in-instance check
   and can persist the record by overriding `ReadRecordedIdentityAsync` / `WriteRecordedIdentityAsync` /
-  `ForgetRecordedIdentityAsync`. `EmbeddingIdentityRecord` (Core) is the shared record format.
+  `ForgetRecordedIdentityAsync`. `EmbeddingIdentityRecord` (Core) is the shared record format. `BindIdentity(null)`
+  throws `ArgumentNullException`: a test double for `IEmbeddingService` used with one of these stores (directly, or through
+  a pipeline that binds the pair, as FluxFeed does) must return an identity from `GetIdentity()`.
 
 ### Documentation
 - **The README states the SQLite stores' measured search latency**: full scan p50 6.6 s vs sqlite-vec 45 ms over 43,293
