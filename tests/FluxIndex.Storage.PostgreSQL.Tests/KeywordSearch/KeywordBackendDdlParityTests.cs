@@ -110,7 +110,6 @@ public class KeywordBackendDdlParityTests
 
         foreach (var index in new[]
                  {
-                     "idx_bm25_terms_term",
                      "idx_bm25_postings_chunk",
                      "idx_bm25_field_postings_chunk",
                      "idx_bm25_chunks_document"
@@ -118,6 +117,17 @@ public class KeywordBackendDdlParityTests
         {
             sqliteDdl.Should().Contain(index);
             postgresDdl.Should().Contain(index);
+        }
+    }
+
+    [Fact]
+    public void EveryBackend_DropsTheSecondIndexOnTermText()
+    {
+        // bm25_terms.term is UNIQUE, which indexes it; the older plain index on the same column is dropped, not created.
+        foreach (var ddl in new[] { DdlOf(Sqlite()), DdlOf(Postgres()) })
+        {
+            ddl.Should().Contain("DROP INDEX IF EXISTS idx_bm25_terms_term");
+            ddl.Should().NotContain("CREATE INDEX IF NOT EXISTS idx_bm25_terms_term");
         }
     }
 }

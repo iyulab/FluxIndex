@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using System.Data.Common;
+using System.Globalization;
 
 namespace FluxIndex.Storage.PostgreSQL.KeywordSearch;
 
@@ -135,22 +136,12 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
             value double precision NOT NULL
         );
 
-        CREATE INDEX IF NOT EXISTS idx_bm25_terms_term ON bm25_terms(term);
+        -- The UNIQUE constraint on bm25_terms.term already indexes the column; a second index on it only doubled
+        -- the cost of every term insert and document-frequency update. Dropped where an earlier release created it.
+        DROP INDEX IF EXISTS idx_bm25_terms_term;
         CREATE INDEX IF NOT EXISTS idx_bm25_postings_chunk ON bm25_postings(chunk_id);
         CREATE INDEX IF NOT EXISTS idx_bm25_field_postings_chunk ON bm25_field_postings(chunk_id);
         CREATE INDEX IF NOT EXISTS idx_bm25_chunks_document ON bm25_chunks(document_id);
-        """;
-
-    /// <inheritdoc />
-    protected override string UpsertChunkSql => """
-        INSERT INTO bm25_chunks (chunk_id, document_id, chunk_index, content, token_count, metadata)
-        VALUES (@chunkId, @documentId, @chunkIndex, @content, @tokenCount, @metadata)
-        ON CONFLICT (chunk_id) DO UPDATE SET
-            document_id = excluded.document_id,
-            chunk_index = excluded.chunk_index,
-            content = excluded.content,
-            token_count = excluded.token_count,
-            metadata = excluded.metadata;
         """;
 
     /// <summary>
@@ -201,14 +192,17 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
     /// </summary>
     protected override async Task LockChunksAsync(DbConnection connection, IReadOnlyCollection<string> chunkIds, CancellationToken cancellationToken)
     {
-        foreach (var key in chunkIds.Select(ChunkLockKey).Distinct().Order())
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT pg_advisory_xact_lock(@lockClass, @lockKey)";
-            AddParameter(command, "@lockClass", ChunkLockClass);
-            AddParameter(command, "@lockKey", key);
-            await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        }
+        var keys = chunkIds.Select(ChunkLockKey).Distinct().Order().ToArray();
+        if (keys.Length == 0)
+            return;
+
+        // One statement for the whole batch: the locks are taken as unnest yields the sorted keys, in array order, and
+        // the aggregate makes every row's call run before the statement returns.
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT count(pg_advisory_xact_lock(@lockClass, k)) FROM unnest(@lockKeys) AS k";
+        AddParameter(command, "@lockClass", ChunkLockClass);
+        AddParameter(command, "@lockKeys", keys);
+        await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The advisory-lock class id of keyword-index chunk locks (ASCII "FXKC").</summary>
@@ -238,24 +232,45 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
         return $"{columnRef} = ANY(@terms)";
     }
 
-    /// <inheritdoc />
-    protected override string UpsertPostingSql => """
-        INSERT INTO bm25_postings (term_id, chunk_id, term_frequency, document_length)
-        VALUES (@termId, @chunkId, @tf, @docLen)
-        ON CONFLICT (term_id, chunk_id) DO UPDATE SET
-            term_frequency = excluded.term_frequency,
-            document_length = excluded.document_length;
-        """;
+    /// <summary>Most rows one array-valued insert carries, so a very large batch does not build one huge message.</summary>
+    private const int RowsPerArrayInsert = 50_000;
 
-    /// <inheritdoc />
-    protected override string UpsertFieldPostingSql => """
-        INSERT INTO bm25_field_postings (term_id, chunk_id, field, term_frequency, field_length, document_length)
-        VALUES (@termId, @chunkId, @field, @tf, @fieldLen, @docLen)
-        ON CONFLICT (term_id, chunk_id, field) DO UPDATE SET
-            term_frequency = excluded.term_frequency,
-            field_length = excluded.field_length,
-            document_length = excluded.document_length;
-        """;
+    /// <summary>
+    /// One <c>INSERT … SELECT FROM unnest(…)</c> per <see cref="RowsPerArrayInsert"/> rows: each column travels as one
+    /// array parameter, so the statement and its parameter count stay the same size whatever the batch holds.
+    /// </summary>
+    protected override async Task InsertRowsAsync(
+        DbConnection connection,
+        string table,
+        IReadOnlyList<string> columns,
+        IReadOnlyList<Array> values,
+        string conflictClause,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(columns);
+        ArgumentNullException.ThrowIfNull(values);
+
+        var count = values[0].Length;
+        for (var start = 0; start < count; start += RowsPerArrayInsert)
+        {
+            var length = Math.Min(RowsPerArrayInsert, count - start);
+            await using var command = connection.CreateCommand();
+            var parameters = new List<string>(columns.Count);
+            for (var c = 0; c < columns.Count; c++)
+            {
+                var slice = Array.CreateInstance(values[c].GetType().GetElementType()!, length);
+                Array.Copy(values[c], start, slice, 0, length);
+                var name = "@c" + c.ToString(CultureInfo.InvariantCulture);
+                parameters.Add(name);
+                AddParameter(command, name, slice);
+            }
+
+            command.CommandText =
+                $"INSERT INTO {table} ({string.Join(", ", columns)}) SELECT * FROM unnest({string.Join(", ", parameters)}) {conflictClause}";
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     /// <inheritdoc />
     protected override string UpsertStatisticSql => """

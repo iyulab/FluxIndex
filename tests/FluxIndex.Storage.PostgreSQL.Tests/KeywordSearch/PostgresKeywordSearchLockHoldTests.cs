@@ -52,8 +52,9 @@ public sealed class PostgresKeywordSearchLockHoldTests : IAsyncLifetime
             await small.IndexChunksAsync([DocumentChunk.Create("seed", string.Join(' ', vocabulary), 0, 1)], ct);
 
         var random = new Random(7);
-        var batch = Enumerable.Range(0, 120)
-            .Select(index => DocumentChunk.Create("large", string.Join(' ', vocabulary.OrderBy(_ => random.Next()).Take(300)), index, 120))
+        // Large enough that the transaction stays open well past 500 ms now that postings are written set by set.
+        var batch = Enumerable.Range(0, 2_000)
+            .Select(index => DocumentChunk.Create("large", string.Join(' ', vocabulary.OrderBy(_ => random.Next()).Take(300)), index, 2_000))
             .ToList();
 
         var largeWrite = Task.Run(() => large.IndexChunksAsync(batch, ct), ct);

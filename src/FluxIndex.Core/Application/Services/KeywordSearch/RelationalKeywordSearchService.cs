@@ -103,9 +103,6 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// </summary>
     protected abstract string SchemaDdl { get; }
 
-    /// <summary>Upsert for a row of <c>bm25_chunks</c>, keyed on <c>chunk_id</c>.</summary>
-    protected abstract string UpsertChunkSql { get; }
-
     /// <summary>
     /// Inserts a row of <c>bm25_terms</c> (<c>@term</c>, document frequency 0) unless the term already has one,
     /// without locking the existing row: a term row is shared by every writer whose text contains the word.
@@ -161,15 +158,6 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// the term again. False by default.
     /// </summary>
     protected virtual bool IsTermRowRemovedFailure(DbException exception) => false;
-
-    /// <summary>Upsert for a row of <c>bm25_postings</c>, keyed on (<c>term_id</c>, <c>chunk_id</c>).</summary>
-    protected abstract string UpsertPostingSql { get; }
-
-    /// <summary>
-    /// Upsert for a row of <c>bm25_field_postings</c>, keyed on (<c>term_id</c>, <c>chunk_id</c>, <c>field</c>),
-    /// with parameters <c>@termId</c>, <c>@chunkId</c>, <c>@field</c>, <c>@tf</c>, <c>@fieldLen</c>, <c>@docLen</c>.
-    /// </summary>
-    protected abstract string UpsertFieldPostingSql { get; }
 
     /// <summary>Upsert for one row of <c>bm25_statistics</c> (<c>@key</c>, <c>@value</c>), keyed on <c>key</c>.</summary>
     protected abstract string UpsertStatisticSql { get; }
@@ -902,12 +890,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
             await DeleteChunkRowsAsync(connection, stale, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
 
-            var indexedChunks = 0;
-            foreach (var (chunk, terms, fieldTerms) in tokenized)
-            {
-                if (await IndexChunkCoreAsync(connection, chunk, terms, fieldTerms, termIds, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false))
-                    indexedChunks++;
-            }
+            var indexedChunks = await WriteChunksAsync(connection, tokenized, termIds, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
 
             await ApplyDocumentFrequencyDeltaAsync(connection, frequencies, affectedTermIds, cancellationToken).ConfigureAwait(false);
             await ApplyStatisticsDeltaAsync(connection, statistics, cancellationToken).ConfigureAwait(false);
@@ -950,7 +933,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     /// <summary>
     /// Makes sure every term in <paramref name="orderedTerms"/> has a row and returns the ids by normalized
-    /// term, without locking any term row.
+    /// term, without locking any term row. Only the terms that have no row yet are inserted, in the given order.
     /// </summary>
     /// <remarks>
     /// Where <see cref="RegistersTermsInOwnTransaction"/> holds, new rows are committed before this returns, so a
@@ -969,19 +952,42 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         if (orderedTerms.Count == 0)
             return ids;
 
+        // Most of a batch's vocabulary is usually registered already - every term of a re-indexed or rebuilt chunk is -
+        // and a lookup is far cheaper than an insert that conflicts on each of them.
+        await ReadTermIdsAsync(connection, orderedTerms, ids, cancellationToken).ConfigureAwait(false);
+        var missing = orderedTerms.Where(term => !ids.ContainsKey(term)).ToList();
+        if (missing.Count == 0)
+            return ids;
+
         if (RegistersTermsInOwnTransaction)
         {
             await using var registration = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
             await using var transaction = await registration.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            await InsertTermsAsync(registration, orderedTerms, cancellationToken).ConfigureAwait(false);
+            await InsertTermsAsync(registration, missing, cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         }
         else
         {
-            await InsertTermsAsync(connection, orderedTerms, cancellationToken).ConfigureAwait(false);
+            await InsertTermsAsync(connection, missing, cancellationToken).ConfigureAwait(false);
         }
 
-        foreach (var batch in orderedTerms.Chunk(LookupBatchSize))
+        await ReadTermIdsAsync(connection, missing, ids, cancellationToken).ConfigureAwait(false);
+
+        // Registered a moment ago and gone already: a concurrent cleanup removed a row no chunk held yet.
+        if (ids.Count != orderedTerms.Count)
+            throw new TermRowRemovedException();
+
+        return ids;
+    }
+
+    /// <summary>Adds to <paramref name="ids"/> the id of every term of <paramref name="terms"/> that has a row.</summary>
+    private async Task ReadTermIdsAsync(
+        DbConnection connection,
+        IReadOnlyList<string> terms,
+        Dictionary<string, long> ids,
+        CancellationToken cancellationToken)
+    {
+        foreach (var batch in terms.Chunk(LookupBatchSize))
         {
             await using var command = connection.CreateCommand();
             var predicate = BuildTermTextPredicate(command, "term", batch);
@@ -990,12 +996,6 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 ids[reader.GetString(0)] = reader.GetInt64(1);
         }
-
-        // Registered a moment ago and gone already: a concurrent cleanup removed a row no chunk held yet.
-        if (ids.Count != orderedTerms.Count)
-            throw new TermRowRemovedException();
-
-        return ids;
     }
 
     /// <summary>
@@ -1015,21 +1015,23 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     }
 
     /// <summary>
-    /// Takes the term rows a transaction is about to update, in id order, and checks that every term it wrote a
+    /// Takes the term rows a transaction is about to update, in id order, and checks that every one of them it wrote a
     /// posting for still has its row.
     /// </summary>
     /// <remarks>
     /// Every writer locks its term rows here and nowhere else, all in one order, so writers sharing vocabulary
-    /// wait for each other only for the few statements between this and commit, and never in a cycle.
+    /// wait for each other only for the few statements between this and commit, and never in a cycle. A term whose
+    /// document frequency does not move is not locked: the chunk that holds it before and after is locked
+    /// (<see cref="LockChunksAsync"/>), so its count cannot reach zero and its row cannot be cleaned up meanwhile.
     /// </remarks>
     private async Task LockTermRowsAsync(
         DbConnection connection,
-        HashSet<long> affectedTermIds,
+        HashSet<long> lockedTermIds,
         DocumentFrequencyDelta frequencies,
         CancellationToken cancellationToken)
     {
         var present = new HashSet<long>();
-        foreach (var batch in affectedTermIds.Order().Chunk(LookupBatchSize))
+        foreach (var batch in lockedTermIds.Order().Chunk(LookupBatchSize))
         {
             await using var command = connection.CreateCommand();
             var predicate = BuildTermIdPredicate(command, "bm25_terms.id", batch);
@@ -1039,7 +1041,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 present.Add(reader.GetInt64(0));
         }
 
-        if (frequencies.WrittenTermIds().Any(id => !present.Contains(id)))
+        if (frequencies.WrittenTermIds().Any(id => lockedTermIds.Contains(id) && !present.Contains(id)))
             throw new TermRowRemovedException();
     }
 
@@ -1079,97 +1081,196 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         => exception.SqlState is "40P01" or "40001";
 
     /// <summary>
-    /// Writes one chunk's payload and postings. Re-indexing an existing chunk replaces its postings
-    /// wholesale rather than layering new ones on top, so document frequency cannot drift.
+    /// Writes a batch of chunks' payloads and postings on the open transaction and returns how many hold terms.
+    /// Re-indexing an existing chunk replaces its postings wholesale rather than layering new ones on top, so document
+    /// frequency cannot drift. A chunk listed more than once is written as its last occurrence.
     /// </summary>
-    private async Task<bool> IndexChunkCoreAsync(
+    /// <remarks>
+    /// Set by set: the batch's previous postings go in one statement per relation, and its new postings, field
+    /// postings and filter rows are written as multi-row inserts (<see cref="InsertRowsAsync"/>). One statement per
+    /// posting used to cost a round-trip per distinct term of every chunk - a few hundred for a chunk of ordinary
+    /// length - which is where indexing a large document, and rebuilding a whole index, spent its time against a
+    /// server across a network.
+    /// </remarks>
+    private async Task<int> WriteChunksAsync(
         DbConnection connection,
-        DocumentChunk chunk,
-        List<string> terms,
-        List<(string Field, List<string> Terms)> fieldTerms,
+        IReadOnlyList<(DocumentChunk Chunk, List<string> Terms, List<(string Field, List<string> Terms)> FieldTerms)> tokenized,
         Dictionary<string, long> termIds,
         HashSet<long> affectedTermIds,
         StatisticsDelta statistics,
         DocumentFrequencyDelta frequencies,
         CancellationToken cancellationToken)
     {
-        // The previous rows go whatever the new content is. Returning before this when the new content
-        // analyzes to no terms left the old postings in place, so text the chunk no longer holds kept
-        // matching.
-        await DeletePostingsAsync(connection, chunk.Id, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
+        var latest = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < tokenized.Count; i++)
+            latest[tokenized[i].Chunk.Id] = i;
+        var chunks = latest.Values.Order().Select(i => tokenized[i]).ToList();
 
-        if (terms.Count == 0)
+        // The previous rows go whatever the new content is: a chunk whose new content analyzes to no terms leaves the
+        // index, and keeping its old postings would let it go on matching text it no longer holds.
+        await DeletePostingsAsync(connection, [.. latest.Keys], affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
+        await DeleteChunkPayloadsAsync(
+            connection, [.. chunks.Where(c => c.Terms.Count == 0).Select(c => c.Chunk.Id)], cancellationToken).ConfigureAwait(false);
+
+        var indexed = chunks.Where(c => c.Terms.Count > 0).ToList();
+        var postings = new List<(long TermId, string ChunkId, int Frequency, int DocumentLength)>();
+        var fieldPostings = new List<(long TermId, string ChunkId, string Field, int Frequency, int FieldLength, int DocumentLength)>();
+        foreach (var (chunk, terms, fieldTerms) in indexed)
         {
-            await DeleteChunkPayloadAsync(connection, chunk.Id, cancellationToken).ConfigureAwait(false);
-            return false;
-        }
+            statistics.AddDocument(terms.Count);
 
-        statistics.AddDocument(terms.Count);
-
-        await using (var chunkCmd = connection.CreateCommand())
-        {
-            chunkCmd.CommandText = UpsertChunkSql;
-            AddParameter(chunkCmd, "@chunkId", chunk.Id);
-            AddParameter(chunkCmd, "@documentId", chunk.DocumentId);
-            AddParameter(chunkCmd, "@chunkIndex", chunk.ChunkIndex);
-            AddParameter(chunkCmd, "@content", chunk.Content);
-            AddParameter(chunkCmd, "@tokenCount", chunk.TokenCount);
-            AddParameter(
-                chunkCmd,
-                "@metadata",
-                chunk.Metadata is { Count: > 0 } ? JsonSerializer.Serialize(chunk.Metadata) : null);
-            await chunkCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        await WriteFilterableMetadataAsync(connection, chunk, cancellationToken).ConfigureAwait(false);
-
-        var termFrequencies = PostingFrequencies(terms);
-
-        foreach (var (term, frequency) in termFrequencies)
-        {
-            // The row was already acquired, in the batch's sorted order, before any chunk was
-            // written. Upserting it here instead is what let two transactions take the same rows in
-            // opposite orders.
-            var termId = termIds[term];
-
-            affectedTermIds.Add(termId);
-            frequencies.Written(termId, chunk.Id);
-
-            await using var postingCmd = connection.CreateCommand();
-            postingCmd.CommandText = UpsertPostingSql;
-            AddParameter(postingCmd, "@termId", termId);
-            AddParameter(postingCmd, "@chunkId", chunk.Id);
-            AddParameter(postingCmd, "@tf", frequency);
-            AddParameter(postingCmd, "@docLen", terms.Count);
-            await postingCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        foreach (var (field, fieldTermList) in fieldTerms)
-        {
-            var fieldFrequencies = PostingFrequencies(fieldTermList);
-            if (fieldFrequencies.Count > 0)
-                statistics.AddField(field, fieldTermList.Count);
-
-            foreach (var (term, frequency) in fieldFrequencies)
+            // Every term row was acquired, in the batch's sorted order, before any chunk was written. Upserting term
+            // rows here instead is what let two transactions take the same rows in opposite orders.
+            var termFrequencies = PostingFrequencies(terms);
+            foreach (var (term, frequency) in termFrequencies)
             {
                 var termId = termIds[term];
                 affectedTermIds.Add(termId);
                 frequencies.Written(termId, chunk.Id);
-
-                await using var fieldCmd = connection.CreateCommand();
-                fieldCmd.CommandText = UpsertFieldPostingSql;
-                AddParameter(fieldCmd, "@termId", termId);
-                AddParameter(fieldCmd, "@chunkId", chunk.Id);
-                AddParameter(fieldCmd, "@field", field);
-                AddParameter(fieldCmd, "@tf", frequency);
-                AddParameter(fieldCmd, "@fieldLen", fieldTermList.Count);
-                AddParameter(fieldCmd, "@docLen", terms.Count);
-                await fieldCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                postings.Add((termId, chunk.Id, frequency, terms.Count));
             }
+
+            foreach (var (field, fieldTermList) in fieldTerms)
+            {
+                var fieldFrequencies = PostingFrequencies(fieldTermList);
+                if (fieldFrequencies.Count > 0)
+                    statistics.AddField(field, fieldTermList.Count);
+
+                foreach (var (term, frequency) in fieldFrequencies)
+                {
+                    var termId = termIds[term];
+                    affectedTermIds.Add(termId);
+                    frequencies.Written(termId, chunk.Id);
+                    fieldPostings.Add((termId, chunk.Id, field, frequency, fieldTermList.Count, terms.Count));
+                }
+            }
+
+            LogChunkIndexed(Logger, chunk.Id, termFrequencies.Count);
         }
 
-        LogChunkIndexed(Logger, chunk.Id, termFrequencies.Count);
-        return true;
+        // In key order (term, chunk): concurrent writers reach shared index pages in one order.
+        postings.Sort((l, r) => l.TermId != r.TermId ? l.TermId.CompareTo(r.TermId) : string.CompareOrdinal(l.ChunkId, r.ChunkId));
+        fieldPostings.Sort((l, r) => l.TermId != r.TermId
+            ? l.TermId.CompareTo(r.TermId)
+            : string.CompareOrdinal(l.ChunkId, r.ChunkId) is var byChunk and not 0 ? byChunk : string.CompareOrdinal(l.Field, r.Field));
+
+        await InsertRowsAsync(
+            connection,
+            "bm25_chunks",
+            ["chunk_id", "document_id", "chunk_index", "content", "token_count", "metadata"],
+            [
+                indexed.Select(c => c.Chunk.Id).ToArray(),
+                indexed.Select(c => c.Chunk.DocumentId).ToArray(),
+                indexed.Select(c => c.Chunk.ChunkIndex).ToArray(),
+                indexed.Select(c => c.Chunk.Content).ToArray(),
+                indexed.Select(c => c.Chunk.TokenCount).ToArray(),
+                indexed.Select(c => c.Chunk.Metadata is { Count: > 0 } ? JsonSerializer.Serialize(c.Chunk.Metadata) : null).ToArray(),
+            ],
+            """
+            ON CONFLICT (chunk_id) DO UPDATE SET
+                document_id = excluded.document_id,
+                chunk_index = excluded.chunk_index,
+                content = excluded.content,
+                token_count = excluded.token_count,
+                metadata = excluded.metadata
+            """,
+            cancellationToken).ConfigureAwait(false);
+        await WriteFilterableMetadataAsync(connection, [.. indexed.Select(c => c.Chunk)], cancellationToken).ConfigureAwait(false);
+        await InsertRowsAsync(
+            connection,
+            "bm25_postings",
+            ["term_id", "chunk_id", "term_frequency", "document_length"],
+            [
+                postings.Select(p => p.TermId).ToArray(),
+                postings.Select(p => p.ChunkId).ToArray(),
+                postings.Select(p => p.Frequency).ToArray(),
+                postings.Select(p => p.DocumentLength).ToArray(),
+            ],
+            """
+            ON CONFLICT (term_id, chunk_id) DO UPDATE SET
+                term_frequency = excluded.term_frequency,
+                document_length = excluded.document_length
+            """,
+            cancellationToken).ConfigureAwait(false);
+        await InsertRowsAsync(
+            connection,
+            "bm25_field_postings",
+            ["term_id", "chunk_id", "field", "term_frequency", "field_length", "document_length"],
+            [
+                fieldPostings.Select(p => p.TermId).ToArray(),
+                fieldPostings.Select(p => p.ChunkId).ToArray(),
+                fieldPostings.Select(p => p.Field).ToArray(),
+                fieldPostings.Select(p => p.Frequency).ToArray(),
+                fieldPostings.Select(p => p.FieldLength).ToArray(),
+                fieldPostings.Select(p => p.DocumentLength).ToArray(),
+            ],
+            """
+            ON CONFLICT (term_id, chunk_id, field) DO UPDATE SET
+                term_frequency = excluded.term_frequency,
+                field_length = excluded.field_length,
+                document_length = excluded.document_length
+            """,
+            cancellationToken).ConfigureAwait(false);
+        return indexed.Count;
+    }
+
+    /// <summary>
+    /// Most parameters one multi-row insert of the default <see cref="InsertRowsAsync"/> carries: below every
+    /// backend's limit (SQLite 32,766, PostgreSQL 65,535), and enough rows per statement that the round-trip stops
+    /// mattering.
+    /// </summary>
+    private const int MaxParametersPerStatement = 8_000;
+
+    /// <summary>
+    /// Inserts rows into one index relation: <paramref name="values"/> holds one array per column of
+    /// <paramref name="columns"/>, all of the same length (<see cref="long"/>[], <see cref="int"/>[] or
+    /// <see cref="string"/>[]), and <paramref name="conflictClause"/> - an <c>ON CONFLICT … DO UPDATE</c> clause, or
+    /// empty - follows the rows. A batch never names a key twice. The default writes multi-row <c>VALUES</c> lists of at
+    /// most <see cref="MaxParametersPerStatement"/> parameters, which every backend here accepts; a dialect with an
+    /// array-valued insert overrides this to send each column once.
+    /// </summary>
+    /// <remarks>
+    /// This is what indexing writes postings through. One statement per posting used to cost a round-trip per distinct
+    /// term of every chunk - a few hundred for a chunk of ordinary length - which is where indexing a large document,
+    /// and rebuilding a whole index, spent its time against a server across a network.
+    /// </remarks>
+    protected virtual async Task InsertRowsAsync(
+        DbConnection connection,
+        string table,
+        IReadOnlyList<string> columns,
+        IReadOnlyList<Array> values,
+        string conflictClause,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(columns);
+        ArgumentNullException.ThrowIfNull(values);
+
+        var count = values[0].Length;
+        var perStatement = MaxParametersPerStatement / columns.Count;
+        for (var start = 0; start < count; start += perStatement)
+        {
+            var end = Math.Min(count, start + perStatement);
+            await using var command = connection.CreateCommand();
+            var rows = new StringBuilder();
+            for (var r = start; r < end; r++)
+            {
+                rows.Append(r == start ? "(" : ",(");
+                for (var c = 0; c < columns.Count; c++)
+                {
+                    var name = string.Create(CultureInfo.InvariantCulture, $"@r{r - start}c{c}");
+                    if (c > 0)
+                        rows.Append(',');
+                    rows.Append(name);
+                    AddParameter(command, name, values[c].GetValue(r));
+                }
+
+                rows.Append(')');
+            }
+
+            command.CommandText = $"INSERT INTO {table} ({string.Join(", ", columns)}) VALUES {rows} {conflictClause}";
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc />
@@ -1198,43 +1299,44 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     }
 
     /// <summary>
-    /// Replaces the chunk's filterable metadata rows. Delete-then-insert rather than upsert: a key
+    /// Replaces the chunks' filterable metadata rows. Delete-then-insert rather than upsert: a key
     /// dropped from the metadata has to disappear from the filter dimension too, and an upsert keyed
     /// on the rows present would leave the removed one behind — the chunk would keep matching a
     /// filter it no longer satisfies.
     /// </summary>
     private async Task WriteFilterableMetadataAsync(
         DbConnection connection,
-        DocumentChunk chunk,
+        List<DocumentChunk> chunks,
         CancellationToken cancellationToken)
     {
-        await using (var deleteCmd = connection.CreateCommand())
+        if (chunks.Count == 0)
+            return;
+
+        foreach (var batch in chunks.Chunk(ChunkIdsPerStatement))
         {
-            deleteCmd.CommandText = "DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId";
-            AddParameter(deleteCmd, "@chunkId", chunk.Id);
+            await using var deleteCmd = connection.CreateCommand();
+            deleteCmd.CommandText =
+                $"DELETE FROM bm25_chunk_metadata WHERE chunk_id IN ({AddChunkIdParameters(deleteCmd, [.. batch.Select(c => c.Id)])})";
             await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         // Distinct because a collection may repeat a value, and the row set is a membership fact -
         // "this chunk has this value for this key" is true once however many times it was written.
-        var rows = KeywordMetadataFilter.Project(chunk.Metadata)
-            .Select(row => (row.Key, Value: StoredMetadataValue(row.Value)))
-            .Distinct()
+        var rows = chunks
+            .SelectMany(chunk => KeywordMetadataFilter.Project(chunk.Metadata)
+                .Select(row => (ChunkId: chunk.Id, row.Key, Value: StoredMetadataValue(row.Value)))
+                .Distinct())
             .ToList();
         if (rows.Count == 0)
             return;
 
-        foreach (var (key, value) in rows)
-        {
-            await using var insertCmd = connection.CreateCommand();
-            insertCmd.CommandText =
-                "INSERT INTO bm25_chunk_metadata (chunk_id, meta_key, meta_value) " +
-                "VALUES (@chunkId, @key, @value)";
-            AddParameter(insertCmd, "@chunkId", chunk.Id);
-            AddParameter(insertCmd, "@key", key);
-            AddParameter(insertCmd, "@value", value);
-            await insertCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
+        await InsertRowsAsync(
+            connection,
+            "bm25_chunk_metadata",
+            ["chunk_id", "meta_key", "meta_value"],
+            [rows.Select(r => r.ChunkId).ToArray(), rows.Select(r => r.Key).ToArray(), rows.Select(r => r.Value).ToArray()],
+            string.Empty,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1436,12 +1538,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
             await DeleteChunkRowsAsync(connection, oldIds, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
 
-            var reindexed = 0;
-            foreach (var (chunk, terms, fieldTerms) in tokenized)
-            {
-                if (await IndexChunkCoreAsync(connection, chunk, terms, fieldTerms, termIds, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false))
-                    reindexed++;
-            }
+            var reindexed = await WriteChunksAsync(connection, tokenized, termIds, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
 
             await ApplyDocumentFrequencyDeltaAsync(connection, frequencies, affectedTermIds, cancellationToken).ConfigureAwait(false);
             await ApplyStatisticsDeltaAsync(connection, statistics, cancellationToken).ConfigureAwait(false);
@@ -1556,23 +1653,23 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// </summary>
     private async Task DeleteChunkRowsAsync(
         DbConnection connection,
-        IEnumerable<string> chunkIds,
+        IReadOnlyList<string> chunkIds,
         HashSet<long> affectedTermIds,
         StatisticsDelta statistics,
         DocumentFrequencyDelta frequencies,
         CancellationToken cancellationToken)
     {
-        foreach (var chunkId in chunkIds)
-        {
-            await DeletePostingsAsync(connection, chunkId, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
-            await DeleteChunkPayloadAsync(connection, chunkId, cancellationToken).ConfigureAwait(false);
-        }
+        await DeletePostingsAsync(connection, chunkIds, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
+        await DeleteChunkPayloadsAsync(connection, chunkIds, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Most chunk ids one statement names in its <c>IN (…)</c> list.</summary>
+    private const int ChunkIdsPerStatement = 500;
+
     /// <summary>
-    /// Deletes a chunk's body and field postings, recording what the deletion actually removed: each
-    /// (term, chunk) pair for document frequency, the term ids for the zero-frequency cleanup, and the
-    /// stored lengths for the statistics.
+    /// Deletes the chunks' body and field postings, recording what the deletion actually removed: each
+    /// (term, chunk) pair for document frequency, the term ids for the zero-frequency cleanup, and each
+    /// chunk's stored lengths for the statistics.
     /// </summary>
     /// <remarks>
     /// The removed rows come from the deletion itself (<c>DELETE … RETURNING</c>), not from a read before it. Under
@@ -1582,66 +1679,75 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// </remarks>
     private async Task DeletePostingsAsync(
         DbConnection connection,
-        string chunkId,
+        IReadOnlyList<string> chunkIds,
         HashSet<long> affectedTermIds,
         StatisticsDelta statistics,
         DocumentFrequencyDelta frequencies,
         CancellationToken cancellationToken)
     {
-        long? documentLength = null;
-        await using (var bodyCmd = connection.CreateCommand())
-        {
-            bodyCmd.CommandText = "DELETE FROM bm25_postings WHERE chunk_id = @chunkId RETURNING term_id, document_length";
-            AddParameter(bodyCmd, "@chunkId", chunkId);
-            await using var reader = await bodyCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                var termId = reader.GetInt64(0);
-                affectedTermIds.Add(termId);
-                frequencies.Removed(termId, chunkId);
-                var length = Convert.ToInt64(reader.GetValue(1), CultureInfo.InvariantCulture);
-                documentLength = documentLength is null ? length : Math.Max(documentLength.Value, length);
-            }
-        }
+        var documentLengths = new Dictionary<string, long>(StringComparer.Ordinal);
+        var fieldLengths = new SortedDictionary<(string ChunkId, string Field), long>();
 
-        if (documentLength is not null)
-            statistics.RemoveDocument(documentLength.Value);
-
-        // Field rows count toward document frequency only for the fields configured now, the same rows the full
-        // recount reads. Rows left behind by a field dropped from the configuration are deleted all the same, and
-        // still take their lengths out of that field's statistics.
-        var fieldLengths = new SortedDictionary<string, long>(StringComparer.Ordinal);
-        await using (var fieldCmd = connection.CreateCommand())
+        foreach (var batch in chunkIds.Chunk(ChunkIdsPerStatement))
         {
-            fieldCmd.CommandText = "DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId RETURNING term_id, field, field_length";
-            AddParameter(fieldCmd, "@chunkId", chunkId);
-            await using var reader = await fieldCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            var ids = batch.ToList();
+            await using (var bodyCmd = connection.CreateCommand())
             {
-                var termId = reader.GetInt64(0);
-                var field = reader.GetString(1);
-                affectedTermIds.Add(termId);
-                if (_configuredFields.Contains(field))
+                bodyCmd.CommandText =
+                    $"DELETE FROM bm25_postings WHERE chunk_id IN ({AddChunkIdParameters(bodyCmd, ids)}) RETURNING chunk_id, term_id, document_length";
+                await using var reader = await bodyCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    var chunkId = reader.GetString(0);
+                    var termId = reader.GetInt64(1);
+                    affectedTermIds.Add(termId);
                     frequencies.Removed(termId, chunkId);
-                var length = Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture);
-                fieldLengths[field] = fieldLengths.TryGetValue(field, out var current) ? Math.Max(current, length) : length;
+                    var length = Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture);
+                    documentLengths[chunkId] = documentLengths.TryGetValue(chunkId, out var current) ? Math.Max(current, length) : length;
+                }
+            }
+
+            // Field rows count toward document frequency only for the fields configured now, the same rows the full
+            // recount reads. Rows left behind by a field dropped from the configuration are deleted all the same, and
+            // still take their lengths out of that field's statistics.
+            await using (var fieldCmd = connection.CreateCommand())
+            {
+                fieldCmd.CommandText =
+                    $"DELETE FROM bm25_field_postings WHERE chunk_id IN ({AddChunkIdParameters(fieldCmd, ids)}) RETURNING chunk_id, term_id, field, field_length";
+                await using var reader = await fieldCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    var chunkId = reader.GetString(0);
+                    var termId = reader.GetInt64(1);
+                    var field = reader.GetString(2);
+                    affectedTermIds.Add(termId);
+                    if (_configuredFields.Contains(field))
+                        frequencies.Removed(termId, chunkId);
+                    var length = Convert.ToInt64(reader.GetValue(3), CultureInfo.InvariantCulture);
+                    fieldLengths[(chunkId, field)] = fieldLengths.TryGetValue((chunkId, field), out var current) ? Math.Max(current, length) : length;
+                }
             }
         }
 
-        foreach (var (field, length) in fieldLengths)
+        foreach (var length in documentLengths.Values)
+            statistics.RemoveDocument(length);
+        foreach (var ((_, field), length) in fieldLengths)
             statistics.RemoveField(field, length);
     }
 
-    /// <summary>Deletes a chunk's payload row and its filterable metadata rows.</summary>
-    private static async Task DeleteChunkPayloadAsync(DbConnection connection, string chunkId, CancellationToken cancellationToken)
+    /// <summary>Deletes the chunks' payload rows and their filterable metadata rows.</summary>
+    private static async Task DeleteChunkPayloadsAsync(DbConnection connection, IReadOnlyList<string> chunkIds, CancellationToken cancellationToken)
     {
-        await using var deleteCmd = connection.CreateCommand();
-        deleteCmd.CommandText = """
-            DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId;
-            DELETE FROM bm25_chunks WHERE chunk_id = @chunkId;
-            """;
-        AddParameter(deleteCmd, "@chunkId", chunkId);
-        await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var batch in chunkIds.Chunk(ChunkIdsPerStatement))
+        {
+            await using var deleteCmd = connection.CreateCommand();
+            var ids = AddChunkIdParameters(deleteCmd, [.. batch]);
+            deleteCmd.CommandText = $"""
+                DELETE FROM bm25_chunk_metadata WHERE chunk_id IN ({ids});
+                DELETE FROM bm25_chunks WHERE chunk_id IN ({ids});
+                """;
+            await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -1671,6 +1777,9 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             var key = (termId, chunkId);
             _pairs[key] = _pairs.TryGetValue(key, out var state) ? (state.Before, true) : (false, true);
         }
+
+        /// <summary>Every term the transaction deleted or wrote a posting for.</summary>
+        public HashSet<long> TouchedTermIds() => [.. _pairs.Keys.Select(pair => pair.TermId)];
 
         /// <summary>The terms the transaction wrote a posting for.</summary>
         public IEnumerable<long> WrittenTermIds()
@@ -1718,11 +1827,21 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         HashSet<long> affectedTermIds,
         CancellationToken cancellationToken)
     {
-        await LockTermRowsAsync(connection, affectedTermIds, frequencies, cancellationToken).ConfigureAwait(false);
+        var changes = frequencies.TermsByChange();
+        var moving = changes.Values.SelectMany(ids => ids).ToHashSet();
+
+        // Rows a later cleanup may remove: those whose count fell, and those registered for this transaction that it
+        // wrote no posting for (a chunk whose body analyzed to nothing, or one superseded within the batch).
+        var touched = frequencies.TouchedTermIds();
+        var cleanup = changes.Where(c => c.Key < 0).SelectMany(c => c.Value).ToHashSet();
+        cleanup.UnionWith(affectedTermIds.Where(id => !touched.Contains(id)));
+
+        if (moving.Count > 0)
+            await LockTermRowsAsync(connection, moving, frequencies, cancellationToken).ConfigureAwait(false);
 
         // One statement per distinct change rather than per term: a write moves most of its terms by the
         // same amount (+1 for a new chunk, -1 for a deleted one).
-        foreach (var (change, termIds) in frequencies.TermsByChange())
+        foreach (var (change, termIds) in changes)
         {
             foreach (var batch in Batch(termIds, TermIdBatchSize))
             {
@@ -1734,13 +1853,13 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             }
         }
 
-        if (affectedTermIds.Count == 0)
+        if (cleanup.Count == 0)
             return;
 
-        // Scoped to the rows this transaction touched, including terms it acquired but wrote no posting for.
-        // The unscoped form scanned every term on every write and could wait on rows other transactions hold
-        // for reasons unrelated to this one.
-        foreach (var batch in Batch(affectedTermIds, TermIdBatchSize))
+        // Scoped to the rows whose count can have reached zero here. The unscoped form scanned every term on every
+        // write and could wait on rows other transactions hold for reasons unrelated to this one; scoping it to every
+        // touched row still cost a statement per id batch for a re-index that moved no count at all.
+        foreach (var batch in Batch(cleanup, TermIdBatchSize))
         {
             await using var cleanupCmd = connection.CreateCommand();
             var predicate = BuildTermIdPredicate(cleanupCmd, "bm25_terms.id", batch);

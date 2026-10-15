@@ -186,24 +186,14 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
             value REAL NOT NULL
         );
 
-        CREATE INDEX IF NOT EXISTS idx_bm25_terms_term ON bm25_terms(term);
+        -- The UNIQUE constraint on bm25_terms.term already indexes the column; a second index on it only doubled
+        -- the cost of every term insert and document-frequency update. Dropped where an earlier release created it.
+        DROP INDEX IF EXISTS idx_bm25_terms_term;
         CREATE INDEX IF NOT EXISTS idx_bm25_postings_chunk ON bm25_postings(chunk_id);
         CREATE INDEX IF NOT EXISTS idx_bm25_field_postings_chunk ON bm25_field_postings(chunk_id);
         CREATE INDEX IF NOT EXISTS idx_bm25_chunks_document ON bm25_chunks(document_id);
         CREATE INDEX IF NOT EXISTS idx_bm25_chunk_metadata_lookup
             ON bm25_chunk_metadata(meta_key, meta_value);
-        """;
-
-    /// <inheritdoc />
-    protected override string UpsertChunkSql => """
-        INSERT INTO bm25_chunks (chunk_id, document_id, chunk_index, content, token_count, metadata)
-        VALUES (@chunkId, @documentId, @chunkIndex, @content, @tokenCount, @metadata)
-        ON CONFLICT(chunk_id) DO UPDATE SET
-            document_id = excluded.document_id,
-            chunk_index = excluded.chunk_index,
-            content = excluded.content,
-            token_count = excluded.token_count,
-            metadata = excluded.metadata;
         """;
 
     /// <inheritdoc />
@@ -225,18 +215,6 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
 
         return $"{columnRef} IN ({string.Join(",", names)})";
     }
-
-    /// <inheritdoc />
-    protected override string UpsertPostingSql => """
-        INSERT OR REPLACE INTO bm25_postings (term_id, chunk_id, term_frequency, document_length)
-        VALUES (@termId, @chunkId, @tf, @docLen);
-        """;
-
-    /// <inheritdoc />
-    protected override string UpsertFieldPostingSql => """
-        INSERT OR REPLACE INTO bm25_field_postings (term_id, chunk_id, field, term_frequency, field_length, document_length)
-        VALUES (@termId, @chunkId, @field, @tf, @fieldLen, @docLen);
-        """;
 
     /// <inheritdoc />
     protected override string UpsertStatisticSql => """

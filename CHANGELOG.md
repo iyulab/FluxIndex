@@ -7,6 +7,21 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Changed
+- **Keyword-index writes cost a few statements per batch instead of one per posting.** Indexing, re-indexing, document
+  replacement and the definition rebuild now delete a batch's postings in one statement per relation and write its
+  chunks, postings, field postings and filter rows as set inserts (PostgreSQL: one `unnest` insert per relation;
+  SQLite: multi-row `VALUES`). Terms that already have a row are looked up instead of re-inserted, and only the term
+  rows whose document frequency moves are locked and checked for cleanup. Measured on PostgreSQL in Docker, rebuilding
+  2,000 stored chunks whose terms did not change went from 220 s to 17 s.
+- The plain index `idx_bm25_terms_term` is dropped on first open: `bm25_terms.term` is `UNIQUE`, which already indexes
+  it, and the second index doubled the cost of every term insert and document-frequency update.
+- **Breaking** (custom keyword backends only): `RelationalKeywordSearchService` no longer has the abstract
+  `UpsertChunkSql`, `UpsertPostingSql` and `UpsertFieldPostingSql`; rows are written through the new protected virtual
+  `InsertRowsAsync(connection, table, columns, values, conflictClause, cancellationToken)`, whose default writes
+  multi-row `VALUES`. Migration: delete those three overrides from a subclass; override `InsertRowsAsync` only if your
+  database has a faster array-valued insert.
+
 ### Fixed
 - **A keyword index written before 0.93.0 under the analyzer you still register is no longer re-tokenized on first
   open.** Such an index records no analyzer; the first open now re-analyzes an evenly spaced sample of up to 1,024 stored
