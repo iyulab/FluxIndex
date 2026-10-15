@@ -876,8 +876,25 @@ public partial class EntityGraphService : IEntityGraphService
             return reused;
         }
 
+        // The folded names, plus each wanted node's surface forms as written: a graph stored before names were folded
+        // (0.97.0) keys a rule-extracted entity under its own casing («Apple Inc»), and the build must join that node rather
+        // than add a second one beside it. The join itself compares folded identities (StoredGraphConversions folds the
+        // stored name), and the merged node is written back folded, so the old spelling heals on the next build.
+        var wantedNames = wanted.Select(identity => identity.NormalizedName).ToHashSet(StringComparer.Ordinal);
+        var lookupNames = new HashSet<string>(wantedNames, StringComparer.Ordinal);
+        foreach (var node in builtNodes)
+        {
+            if (!wantedNames.Contains(node.NormalizedName))
+                continue;
+            foreach (var form in node.SurfaceForms)
+            {
+                if (!string.IsNullOrWhiteSpace(form))
+                    lookupNames.Add(form.Trim());
+            }
+        }
+
         var stored = await _graphStore.GetEntitiesByNormalizedNamesAsync(
-            wanted.Select(identity => identity.NormalizedName).Distinct(StringComparer.Ordinal).ToList(),
+            lookupNames.ToList(),
             options.Partition,
             cancellationToken);
 
@@ -1263,9 +1280,15 @@ public partial class EntityGraphService : IEntityGraphService
     /// on that name, all entities of one type collapsed onto a single stored node. Nothing failed: the
     /// suite only exercised the linking path, which computed the name a different way.
     /// </remarks>
+    /// <remarks>
+    /// Always case-folded, whatever the extractor supplies: the rule-based extractor and custom patterns hand back
+    /// <see cref="ExtractedEntity.NormalizedText"/> in the text's own casing, while every reader of the stored name (the
+    /// stores' name lookups, query-entity matching, <see cref="IGraphChunkRetriever"/>) compares lower-case. Before 0.97.0
+    /// such an entity was stored as «Apple Inc» and no lookup of «apple inc» found it.
+    /// </remarks>
     private static string NormalizedNameOf(ExtractedEntity entity) =>
         !string.IsNullOrWhiteSpace(entity.NormalizedText)
-            ? entity.NormalizedText
+            ? entity.NormalizedText.Trim().ToLowerInvariant()
             : NormalizeEntityText(entity.Text, entity.Type);
 
     private static string NormalizeEntityText(string text, NamedEntityType type)

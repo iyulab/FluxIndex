@@ -37,6 +37,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   107 s to 31–33 s. A table created by an earlier release is converted once on first open (the column type does not
   change; its unique index is rebuilt under a short exclusive lock). Search results are unchanged.
 
+### Fixed
+- **A rule-extracted or custom-pattern entity is found by a lower-case name.** `GraphEntity.NormalizedName` is now always
+  case-folded; the rule-based extractor and custom patterns used to store it as written («Apple Inc»), so the SQLite and
+  PostgreSQL name lookups (which compare lower-case) and query-entity matching never found it. A graph stored by an earlier
+  release keeps working: the next build that extracts such an entity joins the stored node (it also looks the name up as
+  written) and writes it back folded; nodes read back from the store key folded.
+
 ### Dependencies
 - Re-pinned sibling package(s) `FluxCurator` 0.14.0 -> 0.15.0.
 

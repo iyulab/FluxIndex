@@ -18,8 +18,9 @@ internal static class StoredGraphConversions
     {
         Id = stored.Id,
         Name = stored.Name,
-        // Query-entity matching compares normalized names; an empty one would match every query.
-        NormalizedName = string.IsNullOrEmpty(stored.NormalizedName) ? stored.Name.ToLowerInvariant().Trim() : stored.NormalizedName,
+        // Query-entity matching compares normalized names; an empty one would match every query. Folded here too: a graph
+        // stored before names were folded (0.97.0) can hold «Apple Inc», and a node read back keys the way a fresh build does.
+        NormalizedName = string.IsNullOrEmpty(stored.NormalizedName) ? stored.Name.ToLowerInvariant().Trim() : stored.NormalizedName.Trim().ToLowerInvariant(),
         Type = stored.Type,
         SurfaceForms = stored.SurfaceForms.Count > 0 ? stored.SurfaceForms : [stored.Name],
         Confidence = stored.Confidence,

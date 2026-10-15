@@ -41,7 +41,9 @@ public sealed class GraphLegThroughTheSdkTests : IAsyncDisposable
         using var scope = context.ServiceProvider.CreateScope();
         var hybrid = scope.ServiceProvider.GetRequiredService<IHybridSearchService>();
 
-        var results = await hybrid.SearchAsync("What did Acme Corp agree to?", new HybridSearchOptions
+        // Lower-case on purpose: the rule-based extractor reads «Acme Corp» from the text, and the stored name is folded, so
+        // a query typed without capitals still names it.
+        var results = await hybrid.SearchAsync("what did acme corp agree to?", new HybridSearchOptions
         {
             GraphOptions = new GraphLegOptions { MaxHops = 0 },
         }, Ct);
