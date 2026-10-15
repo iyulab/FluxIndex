@@ -33,6 +33,23 @@ public partial class Retriever
     /// works, hybrid search runs its keyword leg alone, and vector or similarity search throws.
     /// </summary>
     public bool IsKeywordOnly => NoEmbeddingService.IsKeywordOnly(_embeddingService);
+
+    /// <summary>
+    /// The vector store, bound to the embedding identity as it stands now - on each use rather than at construction, so
+    /// a host whose model is chosen at run time can build the retriever before a model is set, and a model that changes
+    /// under a store already bound to another fails here (<c>EmbeddingModelMismatchException</c>) instead of searching
+    /// vectors of another model.
+    /// </summary>
+    private IVectorStore VectorStore
+    {
+        get
+        {
+            if (!IsKeywordOnly)
+                _vectorStore.BindIdentity(_embeddingService.GetIdentity());
+            return _vectorStore;
+        }
+    }
+
     private readonly ICacheService? _cacheService;
     private readonly IRankFusionService? _rankFusionService;
     private readonly IVectorQuantizer? _vectorQuantizer;
@@ -109,10 +126,6 @@ public partial class Retriever
         _graphRAGService = graphRAGService;
         _keywordSearchService = keywordSearchService;
         _retrievalGuard = retrievalGuard;
-
-        // Bind embedding identity to vector store for correct collection resolution
-        if (!IsKeywordOnly)
-            _vectorStore.BindIdentity(_embeddingService.GetIdentity());
 
         // Check if vector store supports quantization
         _quantizedVectorStore = vectorStore as IQuantizedVectorStore;
@@ -323,7 +336,7 @@ public partial class Retriever
             });
 
             // Search in vector store (pass filter for database-level filtering)
-            var searchResults = await _vectorStore.SearchAsync(
+            var searchResults = await VectorStore.SearchAsync(
                 queryEmbedding,
                 maxResults,
                 minScore,
@@ -613,6 +626,8 @@ public partial class Retriever
 
         var hybridOptions = HybridSearchOptionsMapper.FromSearchOptions(options);
         hybridOptions.MaxResults = fetchCount;
+        // The hybrid service reads the same store: bind it to the current identity first.
+        _ = VectorStore;
         var hybridResults = await _hybridSearchService!.SearchAsync(query, hybridOptions, cancellationToken);
 
         WarnIfSparseLegContributedNothing(hybridResults, query);
@@ -1082,7 +1097,7 @@ public partial class Retriever
                 Metadata = new Dictionary<string, object>(stored.Metadata),
             };
 
-            var chunks = await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
+            var chunks = await VectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
             foreach (var chunk in chunks.OrderBy(c => c.ChunkIndex))
             {
                 document.AddChunk(chunk);
@@ -1106,7 +1121,7 @@ public partial class Retriever
         CancellationToken cancellationToken = default)
     {
         LogGettingChunk(_logger, chunkId);
-        return await _vectorStore.GetByIdAsync(chunkId, cancellationToken);
+        return await VectorStore.GetByIdAsync(chunkId, cancellationToken);
     }
 
     /// <summary>
@@ -1147,7 +1162,7 @@ public partial class Retriever
     {
         LogFindingSimilarDocuments(_logger, documentId);
 
-        var chunks = (await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken)).ToList();
+        var chunks = (await VectorStore.GetByDocumentIdAsync(documentId, cancellationToken)).ToList();
         if (chunks.Count == 0 || maxResults <= 0)
             return [];
 
@@ -1180,7 +1195,7 @@ public partial class Retriever
         // Several chunks per document come back, and the source's own chunks rank first: fetch enough to still have
         // maxResults other documents after grouping.
         var topK = (maxResults + 1) * 4 + sourceChunks;
-        var hits = await _vectorStore.SearchAsync(query, topK, minScore, filter, cancellationToken);
+        var hits = await VectorStore.SearchAsync(query, topK, minScore, filter, cancellationToken);
         return hits.Select(chunk => new VectorSearchResult
         {
             DocumentChunk = chunk,
@@ -1270,11 +1285,11 @@ public partial class Retriever
     /// </summary>
     public async Task<RetrievalStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default)
     {
-        var chunkCount = await _vectorStore.CountAsync(cancellationToken);
+        var chunkCount = await VectorStore.CountAsync(cancellationToken);
 
         // Prefer vector store's distinct document count over in-memory repository
         // (InMemoryDocumentRepository resets on restart, but vector store is persistent)
-        var docCount = await _vectorStore.GetDistinctDocumentCountAsync(cancellationToken);
+        var docCount = await VectorStore.GetDistinctDocumentCountAsync(cancellationToken);
         if (docCount == 0)
         {
             // Fallback to document repository for stores that haven't implemented GetDistinctDocumentCountAsync

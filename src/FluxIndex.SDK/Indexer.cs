@@ -119,11 +119,23 @@ public partial class Indexer
         _semanticCache = semanticCache;
         _options = options;
         _logger = logger ?? NullLogger<Indexer>.Instance;
+    }
 
-        // Bind embedding identity to vector store for correct collection resolution. A keyword-only context has no
-        // vector space, so nothing is bound: the store keeps chunks and writes no vector table.
-        if (!IsKeywordOnly)
-            _vectorStore.BindIdentity(_embeddingService.GetIdentity());
+    /// <summary>
+    /// The vector store, bound to the embedding identity as it stands now. Binding on each use rather than at
+    /// construction lets a host whose model is chosen at run time build the indexer before a model is set, and a model
+    /// that changes under a store already bound to another fails here (<c>EmbeddingModelMismatchException</c>) instead
+    /// of mixing vectors. A keyword-only context has no vector space, so nothing is bound: the store keeps chunks and
+    /// writes no vector table.
+    /// </summary>
+    private IVectorStore VectorStore
+    {
+        get
+        {
+            if (!IsKeywordOnly)
+                _vectorStore.BindIdentity(_embeddingService.GetIdentity());
+            return _vectorStore;
+        }
     }
 
     /// <summary>
@@ -935,7 +947,7 @@ public partial class Indexer
             throw new InvalidOperationException($"Document {documentId} not found");
 
         // Get current max chunk index
-        var existingChunks = await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
+        var existingChunks = await VectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
         var maxIndex = existingChunks.Any() ? existingChunks.Max(c => c.ChunkIndex) : -1;
 
         // Create new chunks
@@ -952,7 +964,7 @@ public partial class Indexer
 
         // Generate embeddings and store
         newChunks = await GenerateEmbeddingsAsync(newChunks, cancellationToken);
-        await _vectorStore.StoreBatchAsync(newChunks, cancellationToken);
+        await VectorStore.StoreBatchAsync(newChunks, cancellationToken);
         await IndexKeywordAsync(newChunks, cancellationToken);
         await InvalidateReadCachesAsync(documentId, cancellationToken);
 
@@ -972,14 +984,14 @@ public partial class Indexer
         if (IsKeywordOnly)
             throw new InvalidOperationException(NoEmbeddingService.NotConfiguredMessage);
 
-        var missing = (await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken))
+        var missing = (await VectorStore.GetByDocumentIdAsync(documentId, cancellationToken))
             .Where(c => c.Embedding is not { Length: > 0 })
             .ToList();
         if (missing.Count == 0)
             return 0;
 
         var embedded = await GenerateEmbeddingsAsync(missing, cancellationToken);
-        await _vectorStore.StoreBatchAsync(embedded, cancellationToken);
+        await VectorStore.StoreBatchAsync(embedded, cancellationToken);
         await InvalidateReadCachesAsync(documentId, cancellationToken);
         return embedded.Count;
     }
@@ -999,7 +1011,7 @@ public partial class Indexer
             // Delete chunks from vector store. The keyword index is dropped first because its own
             // record of which chunks belong to the document is what makes the removal possible.
             await DeleteKeywordByDocumentIdAsync(documentId, cancellationToken);
-            var removedChunks = await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
+            var removedChunks = await VectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
 
             // Delete document from repository. The repository is process-local, so after a restart it no longer knows
             // a document the store still held: the answer is whether either of them removed something.
@@ -1037,7 +1049,7 @@ public partial class Indexer
         if (HasKeywordIndex)
             await _keywordSearchService!.DeleteChunkAsync(chunkId, cancellationToken);
 
-        var deleted = await _vectorStore.DeleteAsync(chunkId, cancellationToken);
+        var deleted = await VectorStore.DeleteAsync(chunkId, cancellationToken);
         // The chunk's document id is not known here, so no single cached document can be dropped; the generation
         // change covers search results, and a cached document is only a copy of what GetDocumentAsync assembled.
         await InvalidateReadCachesAsync(documentId: null, cancellationToken);
@@ -1059,7 +1071,7 @@ public partial class Indexer
             throw new InvalidOperationException($"Document {documentId} not found");
 
         // Get existing chunks
-        var chunks = await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
+        var chunks = await VectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
         
         // Regenerate embeddings
         var chunksList = chunks.ToList();
@@ -1092,7 +1104,7 @@ public partial class Indexer
     public async Task<IndexingStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default)
     {
         var docCount = await _documentRepository.GetCountAsync(cancellationToken);
-        var chunkCount = await _vectorStore.CountAsync(cancellationToken);
+        var chunkCount = await VectorStore.CountAsync(cancellationToken);
 
         return new IndexingStatistics
         {
@@ -1315,7 +1327,7 @@ public partial class Indexer
         List<DocumentChunkEntity> chunks,
         CancellationToken cancellationToken)
     {
-        await _vectorStore.ReplaceDocumentsAsync(documentIds, chunks, cancellationToken);
+        await VectorStore.ReplaceDocumentsAsync(documentIds, chunks, cancellationToken);
         await ReplaceKeywordAsync(documentIds, chunks, cancellationToken);
     }
 

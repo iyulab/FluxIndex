@@ -11,7 +11,7 @@ public sealed class EmbeddingGeneratorServiceOptions
 {
     /// <summary>
     /// The vector size. Required when the generator's <see cref="EmbeddingGeneratorMetadata.DefaultModelDimensions"/>
-    /// is null; when both are set they must agree.
+    /// is null; when both are set they must agree (checked whenever the identity is read).
     /// </summary>
     public int? Dimensions { get; set; }
 
@@ -40,8 +40,13 @@ public sealed class EmbeddingGeneratorServiceOptions
 /// <c>documents</c> (a symmetric model).
 /// </para>
 /// <para>
-/// The index identity is the documents generator's provider and model id plus the dimension. Construction fails
-/// when the model id or the dimension is unknown: two models would otherwise share an index fingerprint.
+/// The index identity is the documents generator's provider and model id plus the dimension. It is read from the
+/// generator's <see cref="EmbeddingGeneratorMetadata"/> each time it is asked for, not once at construction, so a host
+/// whose model is chosen at run time (a settings screen, a fallback chain) can register the service before a model is
+/// set. Asking for the identity, or embedding, while the generator reports no model id or no dimension throws: two
+/// models would otherwise share an index fingerprint. A store already bound to one identity refuses another
+/// (<see cref="Domain.Exceptions.EmbeddingModelMismatchException"/>) - switching the model of an index means
+/// re-indexing it, or giving the new model its own collection.
 /// The service does not dispose the generators.
 /// </para>
 /// </remarks>
@@ -49,16 +54,14 @@ public sealed class EmbeddingGeneratorEmbeddingService : EmbeddingServiceBase
 {
     private readonly IEmbeddingGenerator<string, Embedding<float>> _documents;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _queries;
-    private readonly string _provider;
-    private readonly string _model;
-    private readonly int _dimension;
+    private readonly int? _dimensions;
     private readonly string? _vectorSpaceRevision;
 
     /// <summary>Creates the service.</summary>
     /// <param name="documents">Embeds stored text (documents, chunks, summaries).</param>
     /// <param name="queries">Embeds search queries; null uses <paramref name="documents"/>.</param>
     /// <param name="options">Dimension and revisions the metadata does not carry.</param>
-    /// <exception cref="ArgumentException">The model id or dimension is unknown, or the two dimensions disagree.</exception>
+    /// <exception cref="ArgumentException"><see cref="EmbeddingGeneratorServiceOptions.Dimensions"/> is not positive.</exception>
     public EmbeddingGeneratorEmbeddingService(
         IEmbeddingGenerator<string, Embedding<float>> documents,
         IEmbeddingGenerator<string, Embedding<float>>? queries = null,
@@ -69,33 +72,43 @@ public sealed class EmbeddingGeneratorEmbeddingService : EmbeddingServiceBase
         _queries = queries ?? documents;
         options ??= new EmbeddingGeneratorServiceOptions();
 
-        var metadata = documents.GetService<EmbeddingGeneratorMetadata>();
-        if (metadata?.DefaultModelId is not { Length: > 0 } model)
-        {
-            throw new ArgumentException(
-                "The embedding generator does not report a model id (EmbeddingGeneratorMetadata.DefaultModelId), " +
-                "so the index cannot be fingerprinted. Configure the generator with a default model id.",
-                nameof(documents));
-        }
-        _model = model;
-        _provider = metadata.ProviderName is { Length: > 0 } provider ? provider : "Microsoft.Extensions.AI";
-
-        var reported = metadata.DefaultModelDimensions;
-        if (options.Dimensions is int set && reported is int known && set != known)
-        {
-            throw new ArgumentException(
-                $"EmbeddingGeneratorServiceOptions.Dimensions is {set} but the generator reports {known} for model '{_model}'.",
-                nameof(options));
-        }
-        _dimension = options.Dimensions ?? reported ?? throw new ArgumentException(
-            $"The embedding generator does not report a dimension for model '{_model}'. " +
-            "Set EmbeddingGeneratorServiceOptions.Dimensions.",
-            nameof(options));
-        if (_dimension <= 0)
-            throw new ArgumentException($"The dimension must be positive (got {_dimension}).", nameof(options));
+        if (options.Dimensions is <= 0)
+            throw new ArgumentException($"The dimension must be positive (got {options.Dimensions}).", nameof(options));
+        _dimensions = options.Dimensions;
 
         Revision = options.Revision;
         _vectorSpaceRevision = options.VectorSpaceRevision;
+    }
+
+    /// <summary>
+    /// The provider, model id and dimension the documents generator reports now, with
+    /// <see cref="EmbeddingGeneratorServiceOptions.Dimensions"/> in place of a dimension it does not report.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The model id or dimension is unknown, or the two dimensions disagree.</exception>
+    private (string Provider, string Model, int Dimension) Describe()
+    {
+        var metadata = _documents.GetService<EmbeddingGeneratorMetadata>();
+        if (metadata?.DefaultModelId is not { Length: > 0 } model)
+        {
+            throw new InvalidOperationException(
+                "The embedding generator does not report a model id (EmbeddingGeneratorMetadata.DefaultModelId), " +
+                "so the index cannot be fingerprinted. Configure the generator with a default model id before it is used.");
+        }
+
+        var reported = metadata.DefaultModelDimensions;
+        if (_dimensions is int set && reported is int known && set != known)
+        {
+            throw new InvalidOperationException(
+                $"EmbeddingGeneratorServiceOptions.Dimensions is {set} but the generator reports {known} for model '{model}'.");
+        }
+
+        var dimension = _dimensions ?? reported ?? throw new InvalidOperationException(
+            $"The embedding generator does not report a dimension for model '{model}'. " +
+            "Set EmbeddingGeneratorServiceOptions.Dimensions, or report EmbeddingGeneratorMetadata.DefaultModelDimensions.");
+        if (dimension <= 0)
+            throw new InvalidOperationException($"The embedding generator reports dimension {dimension} for model '{model}'.");
+
+        return (metadata.ProviderName is { Length: > 0 } provider ? provider : "Microsoft.Extensions.AI", model, dimension);
     }
 
     /// <inheritdoc />
@@ -129,6 +142,7 @@ public sealed class EmbeddingGeneratorEmbeddingService : EmbeddingServiceBase
 
         if (inputs.Count > 0)
         {
+            var expected = Describe();
             var generated = await _documents.GenerateAsync(inputs, options: null, cancellationToken).ConfigureAwait(false);
             if (generated.Count != inputs.Count)
             {
@@ -137,20 +151,22 @@ public sealed class EmbeddingGeneratorEmbeddingService : EmbeddingServiceBase
                     "Results are positional, so a partial set cannot be matched to its inputs.");
             }
             for (var k = 0; k < positions.Count; k++)
-                results[positions[k]] = Checked(generated[k]);
+                results[positions[k]] = Checked(generated[k], expected);
         }
 
         return results;
     }
 
     /// <inheritdoc />
-    public override int GetEmbeddingDimension() => _dimension;
+    /// <exception cref="InvalidOperationException">The generator reports no dimension and none is configured.</exception>
+    public override int GetEmbeddingDimension() => Describe().Dimension;
 
     /// <inheritdoc />
-    public override string GetModelName() => _model;
+    /// <exception cref="InvalidOperationException">The generator reports no model id.</exception>
+    public override string GetModelName() => Describe().Model;
 
     /// <inheritdoc />
-    protected override string GetProviderName() => _provider;
+    protected override string GetProviderName() => Describe().Provider;
 
     /// <inheritdoc />
     protected override string? GetVectorSpaceRevision() => _vectorSpaceRevision;
@@ -158,23 +174,24 @@ public sealed class EmbeddingGeneratorEmbeddingService : EmbeddingServiceBase
     private async Task<float[]> EmbedOneAsync(
         IEmbeddingGenerator<string, Embedding<float>> generator, string text, CancellationToken cancellationToken)
     {
+        var expected = Describe();
         var generated = await generator.GenerateAsync([text], options: null, cancellationToken).ConfigureAwait(false);
         if (generated.Count != 1)
         {
             throw new InvalidOperationException(
                 $"The embedding generator returned {generated.Count} embedding(s) for one input.");
         }
-        return Checked(generated[0]);
+        return Checked(generated[0], expected);
     }
 
-    private float[] Checked(Embedding<float> embedding)
+    private static float[] Checked(Embedding<float> embedding, (string Provider, string Model, int Dimension) expected)
     {
         var vector = embedding.Vector.ToArray();
-        if (vector.Length != _dimension)
+        if (vector.Length != expected.Dimension)
         {
             throw new InvalidOperationException(
-                $"The embedding generator returned a {vector.Length}-dimension vector; the index expects {_dimension} " +
-                $"(model '{_model}'). Set EmbeddingGeneratorServiceOptions.Dimensions to the model's size.");
+                $"The embedding generator returned a {vector.Length}-dimension vector; the index expects {expected.Dimension} " +
+                $"(model '{expected.Model}'). Set EmbeddingGeneratorServiceOptions.Dimensions to the model's size.");
         }
         return vector;
     }

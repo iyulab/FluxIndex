@@ -25,8 +25,10 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   `services.AddEmbeddingGeneratorEmbedding(queriesServiceKey)` in DI) takes an `IEmbeddingGenerator<string, Embedding<float>>`
   — OpenAI, Azure OpenAI, Ollama, LMSupply, IronHive — with no `IEmbeddingService` to write. The query side of an
   asymmetric model is a second generator (omit it for a symmetric model). The index identity is the generator's provider,
-  model id and dimension; a generator that reports no model id, or no dimension and none set
-  (`EmbeddingGeneratorServiceOptions.Dimensions`), fails at construction.
+  model id and dimension, read from its metadata each time it is used — so a host whose model is picked at run time can
+  register it before a model is set. Using it while it reports no model id, or no dimension and none set
+  (`EmbeddingGeneratorServiceOptions.Dimensions`), throws; a model switched under an index whose store is already bound
+  to another model fails with `EmbeddingModelMismatchException` (re-index, or give the new model its own collection).
 - **Batch indexing** — `Indexer.IndexBatchAsync(documents, progress, parallelism)`; chunk embeddings go through
   `IEmbeddingService.GenerateEmbeddingsBatchAsync`. A document that cannot be indexed does not stop the batch, and is not
   dropped silently: the others are written, then `BatchIndexingException` names each one left out (`Failures`) and the

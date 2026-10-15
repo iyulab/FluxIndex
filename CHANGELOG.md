@@ -24,6 +24,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   an index that already holds the right terms — its recorded analyzer was lost, or a sampled chunk differed — is now a
   read pass plus a few writes instead of rewriting every posting. The completion log line reports how many chunks were
   rewritten.
+- **Breaking: `EmbeddingGeneratorEmbeddingService` reads the generator's identity when it is used, not at
+  construction.** Provider, model id and dimension come from `EmbeddingGeneratorMetadata` on each `GetIdentity()`,
+  `GetModelName()`, `GetEmbeddingDimension()` and embed call, so a host whose model is picked at run time (a settings
+  screen, a fallback chain) can register the service — and build a `FluxIndexContext` — before a model is set. A missing
+  model id or dimension, or an `EmbeddingGeneratorServiceOptions.Dimensions` that contradicts the generator, now throws
+  `InvalidOperationException` at that use instead of `ArgumentException` from the constructor (a non-positive
+  `Dimensions` is still refused at construction). `Retriever` and `Indexer` bind the vector store to the identity on
+  each vector operation rather than in their constructors, so a store that guards its identity (Qdrant, sqlite-vec)
+  refuses a model switched under an existing index with `EmbeddingModelMismatchException`. Migration: catch
+  `InvalidOperationException` where you caught the constructor's `ArgumentException`.
 
 ### Dependencies
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.22.0 -> 0.22.1.

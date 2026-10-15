@@ -5,6 +5,7 @@ using FluxIndex.Core.Application.Services;
 using FluxIndex.Storage.SQLite;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.SDK.Tests;
@@ -81,18 +82,21 @@ public class EmbeddingGeneratorIntakeTests : IDisposable
     }
 
     [Fact]
-    public void AGeneratorWithoutAModelId_IsRefused()
+    public async Task AGeneratorWithoutAModelId_IsRefusedWhenUsed_NotWhenConstructed()
     {
-        var act = () => new EmbeddingGeneratorEmbeddingService(new RecordingGenerator("documents", _ => 0, modelId: null));
+        var service = new EmbeddingGeneratorEmbeddingService(new RecordingGenerator("documents", _ => 0, modelId: null));
 
-        act.Should().Throw<ArgumentException>().WithMessage("*model id*");
+        service.Invoking(s => s.GetIdentity()).Should().Throw<InvalidOperationException>().WithMessage("*model id*");
+        await service.Awaiting(s => s.GenerateEmbeddingAsync("text", TestContext.Current.CancellationToken))
+            .Should().ThrowAsync<InvalidOperationException>().WithMessage("*model id*");
     }
 
     [Fact]
-    public void AnUnknownDimension_IsRefused_AndAnOptionSuppliesIt()
+    public void AnUnknownDimension_IsRefusedWhenUsed_AndAnOptionSuppliesIt()
     {
-        var unknown = () => new EmbeddingGeneratorEmbeddingService(new RecordingGenerator("documents", _ => 0, reportDimensions: false));
-        unknown.Should().Throw<ArgumentException>().WithMessage("*EmbeddingGeneratorServiceOptions.Dimensions*");
+        var unknown = new EmbeddingGeneratorEmbeddingService(new RecordingGenerator("documents", _ => 0, reportDimensions: false));
+        unknown.Invoking(s => s.GetEmbeddingDimension())
+            .Should().Throw<InvalidOperationException>().WithMessage("*EmbeddingGeneratorServiceOptions.Dimensions*");
 
         var supplied = new EmbeddingGeneratorEmbeddingService(
             new RecordingGenerator("documents", _ => 0, reportDimensions: false),
@@ -103,11 +107,83 @@ public class EmbeddingGeneratorIntakeTests : IDisposable
     [Fact]
     public void ADimensionThatContradictsTheGenerator_IsRefused()
     {
-        var act = () => new EmbeddingGeneratorEmbeddingService(
+        var service = new EmbeddingGeneratorEmbeddingService(
             new RecordingGenerator("documents", _ => 0),
             options: new EmbeddingGeneratorServiceOptions { Dimensions = RecordingGenerator.Dimensions + 1 });
 
-        act.Should().Throw<ArgumentException>().WithMessage("*reports 4*");
+        service.Invoking(s => s.GetIdentity()).Should().Throw<InvalidOperationException>().WithMessage("*reports 4*");
+    }
+
+    [Fact]
+    public void ANonPositiveDimensionOption_IsRefusedAtConstruction()
+    {
+        var act = () => new EmbeddingGeneratorEmbeddingService(
+            new RecordingGenerator("documents", _ => 0),
+            options: new EmbeddingGeneratorServiceOptions { Dimensions = 0 });
+
+        act.Should().Throw<ArgumentException>().WithMessage("*positive*");
+    }
+
+    [Fact]
+    public void TheIdentity_IsReadFromTheGeneratorWhenAskedFor_SoAModelChosenLaterIsTheOneReported()
+    {
+        // A host whose model is picked at run time registers the generator before any model is set.
+        var documents = new RecordingGenerator("documents", _ => 0, modelId: null);
+        var service = new EmbeddingGeneratorEmbeddingService(documents);
+
+        documents.ModelId = "picked-at-runtime";
+
+        service.GetIdentity().Model.Should().Be("picked-at-runtime");
+        service.GetModelName().Should().Be("picked-at-runtime");
+    }
+
+    [Fact]
+    public async Task AContextBuiltBeforeAModelIsSet_WorksOnceItIsSet()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var documents = new RecordingGenerator("documents", _ => 0, modelId: null);
+        var context = FluxIndexContext.CreateBuilder()
+            .UseSQLite(_dbPath)
+            .UseEmbeddingGenerator(documents)
+            .AddSQLiteStorage()
+            .Build();
+
+        try
+        {
+            documents.ModelId = "model-a";
+            await context.Indexer.IndexDocumentAsync("alpha alpha alpha", "doc-a", cancellationToken: ct);
+            (await context.Retriever.SearchAsync("alpha", maxResults: 1, minScore: 0f, cancellationToken: ct))
+                .Should().ContainSingle();
+        }
+        finally
+        {
+            (context as IDisposable)?.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task TheRetriever_BindsTheStoreToTheIdentityAtEachUse_SoAStoreCanRefuseAModelSwitch()
+    {
+        // Binding at construction would hand the store the identity of the moment the retriever was built; the store's
+        // mismatch check (EmbeddingModelMismatchException) needs the identity of the model that embeds this query.
+        var ct = TestContext.Current.CancellationToken;
+        var documents = new RecordingGenerator("documents", _ => 0, modelId: null);
+        var store = Substitute.For<IVectorStore>();
+        var retriever = new Retriever(
+            store,
+            Substitute.For<IDocumentRepository>(),
+            new EmbeddingGeneratorEmbeddingService(documents),
+            new RetrieverOptions());
+
+        documents.ModelId = "model-a";
+        await retriever.SearchAsync("first", maxResults: 1, minScore: 0f, cancellationToken: ct);
+        documents.ModelId = "model-b";
+        await retriever.SearchAsync("second", maxResults: 1, minScore: 0f, cancellationToken: ct);
+
+        store.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(IVectorStore.BindIdentity))
+            .Select(c => ((FluxIndex.Core.Domain.ValueObjects.EmbeddingIdentity)c.GetArguments()[0]!).Model)
+            .Should().Equal("model-a", "model-b");
     }
 
     [Fact]
@@ -183,8 +259,11 @@ public class EmbeddingGeneratorIntakeTests : IDisposable
         public ConcurrentQueue<string> Inputs { get; } = new();
         public int CallCount;
 
-        private readonly EmbeddingGeneratorMetadata _metadata =
-            new("test-provider", providerUri: null, defaultModelId: modelId, defaultModelDimensions: reportDimensions ? Dimensions : null);
+        /// <summary>The model the generator reports; settable, as a host that picks the model at run time would.</summary>
+        public string? ModelId { get; set; } = modelId;
+
+        private EmbeddingGeneratorMetadata Metadata =>
+            new("test-provider", providerUri: null, defaultModelId: ModelId, defaultModelDimensions: reportDimensions ? Dimensions : null);
 
         public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
             IEnumerable<string> values, Microsoft.Extensions.AI.EmbeddingGenerationOptions? options = null, CancellationToken cancellationToken = default)
@@ -205,7 +284,7 @@ public class EmbeddingGeneratorIntakeTests : IDisposable
         }
 
         public object? GetService(Type serviceType, object? serviceKey = null) =>
-            serviceKey is null && serviceType == typeof(EmbeddingGeneratorMetadata) ? _metadata
+            serviceKey is null && serviceType == typeof(EmbeddingGeneratorMetadata) ? Metadata
             : serviceKey is null && serviceType.IsInstanceOfType(this) ? this
             : null;
 

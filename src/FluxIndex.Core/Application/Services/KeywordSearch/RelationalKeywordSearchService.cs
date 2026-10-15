@@ -2367,11 +2367,11 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                         cancellationToken).ConfigureAwait(false);
                     rebuilt += batch.Rebuilt;
                     rewritten += batch.Rewritten;
+                    if (pacing.ConsecutiveFailures > 0)
+                        LogRebuildRecovered(Logger, BackendName, pacing.ConsecutiveFailures);
                     if (!batch.More)
                         break;
 
-                    if (pacing.ConsecutiveFailures > 0)
-                        LogRebuildRecovered(Logger, BackendName, pacing.ConsecutiveFailures);
                     pacing.Succeeded(stopwatch.Elapsed);
                     PublishRebuild(r => r with
                     {
