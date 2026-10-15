@@ -7,6 +7,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Changed
+- **Breaking: a keyword-index rebuild no longer stops on a failed batch — it retries in the process until it finishes.**
+  A batch that fails (a statement past the command timeout, a dropped connection) rolls back and is tried again from the
+  last committed batch after a growing delay (1 s, doubling, at most 5 min). Batches start at 50 chunks (was a fixed
+  500) and double while they finish within a quarter of the connection's command timeout, halve above half of it, and
+  halve on each failure, down to one chunk — so a large PostgreSQL index on a cold page cache no longer times out
+  batch after batch and waits for the next restart. `KeywordIndexRebuild` gains `ConsecutiveFailures`,
+  `NextAttemptAt` and `BatchSize`; `Error` now carries the last failure while retrying.
+  `KeywordIndexRebuildStatus.Failed` is replaced by `Retrying = 4` (3 is left unused), and
+  `WaitForMaintenanceAsync()` no longer throws for a failed batch — it keeps waiting. Migration: read
+  `Status == Retrying` and `Error` where you read `Failed`; bound a readiness wait with a cancellation token.
+
 ### Dependencies
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.22.0 -> 0.22.1.
 

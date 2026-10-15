@@ -4,6 +4,7 @@ using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using System.Data;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -35,9 +36,6 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     /// <summary>The rebuild while it runs or after it stopped part-way; null when there is none.</summary>
     private KeywordIndexRebuild? _rebuild;
-
-    /// <summary>What stopped the rebuild, when it failed.</summary>
-    private Exception? _rebuildFailure;
 
     /// <summary>Logger used for the shared index operations.</summary>
     protected ILogger Logger { get; }
@@ -100,8 +98,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     private const string AnalyzerKeyPrefix = "analyzer:";
 
-    /// <summary>Chunks re-tokenized per transaction when the index rebuilds its terms.</summary>
-    private const int RebuildBatchSize = 500;
+    /// <summary>Chunks compared per read when the index samples its stored terms against its definition.</summary>
+    private const int SampleBatchSize = 500;
 
     /// <summary>
     /// The statistics key that marks a rebuild in progress and names the definition it rebuilds toward: the analyzer
@@ -269,12 +267,6 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     {
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
         await _maintenance.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-        if (Volatile.Read(ref _rebuild) is { Status: KeywordIndexRebuildStatus.Failed } failed)
-        {
-            throw new InvalidOperationException(
-                $"The keyword index rebuild ({failed.Change}) failed: {failed.Error}", _rebuildFailure);
-        }
     }
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
@@ -2134,7 +2126,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         var sample = await ReadChunkIdSampleAsync(connection, stride, cancellationToken).ConfigureAwait(false);
 
         var compared = 0;
-        foreach (var batch in sample.Chunk(RebuildBatchSize))
+        foreach (var batch in sample.Chunk(SampleBatchSize))
         {
             var ids = batch.ToList();
             var chunks = await LoadChunksAsync(connection, ids, cancellationToken).ConfigureAwait(false);
@@ -2310,14 +2302,15 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             Change = change,
             StartedAt = DateTimeOffset.UtcNow,
             Status = KeywordIndexRebuildStatus.Running,
+            BatchSize = KeywordRebuildPacing.InitialBatchSize,
         });
         var cancellationToken = _maintenanceCancellation.Token;
         _maintenance = Task.Run(() => RunRebuildAsync(change, cancellationToken), CancellationToken.None);
     }
 
     /// <summary>
-    /// Re-tokenizes every stored chunk with the configured analyzer and field set, a batch of
-    /// <see cref="RebuildBatchSize"/> chunks per transaction in chunk-id order, then records the analyzer.
+    /// Re-tokenizes every stored chunk with the configured analyzer and field set, a batch per transaction in chunk-id
+    /// order, then records the analyzer.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -2327,9 +2320,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// </para>
     /// <para>
     /// Each batch commits the cursor with its rows (<see cref="RebuildNextBatchAsync"/>), so a host stopped part-way -
-    /// a deploy, a restart, a health-check kill - continues on its next open instead of starting over. Never fails its
-    /// task: the outcome is the <see cref="KeywordIndexRebuild"/> state, which <see cref="WaitForMaintenanceAsync"/>
-    /// turns into an exception for a caller that waits.
+    /// a deploy, a restart, a health-check kill - continues on its next open instead of starting over. The batch size
+    /// adapts to how long batches take against the command timeout, and a batch that fails is tried again from the
+    /// cursor after a growing delay (<see cref="KeywordRebuildPacing"/>) until the rebuild finishes or the service is
+    /// disposed. Never fails its task: the outcome is the <see cref="KeywordIndexRebuild"/> state.
     /// </para>
     /// <para>
     /// The chunk payload (content and metadata) is stored, so the terms can be rederived without the caller. A chunk the
@@ -2339,23 +2333,58 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// </remarks>
     private async Task RunRebuildAsync(string change, CancellationToken cancellationToken)
     {
+        var pacing = new KeywordRebuildPacing(ReadCommandTimeout());
+        long? total = null;
+        var rebuilt = 0;
         try
         {
-            long total;
-            await using (var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false))
-                total = await CountChunksAsync(connection, cancellationToken).ConfigureAwait(false);
-            LogRebuildStarted(Logger, BackendName, change, total);
-
-            var rebuilt = 0;
             while (true)
             {
-                var batch = (More: false, Rebuilt: 0);
-                await RunWithConcurrencyRetryAsync(
-                    async () => batch = await RebuildNextBatchAsync(cancellationToken).ConfigureAwait(false),
-                    cancellationToken).ConfigureAwait(false);
-                rebuilt += batch.Rebuilt;
-                if (!batch.More)
-                    break;
+                var stopwatch = Stopwatch.StartNew();
+                try
+                {
+                    if (total is null)
+                    {
+                        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+                        total = await CountChunksAsync(connection, cancellationToken).ConfigureAwait(false);
+                        LogRebuildStarted(Logger, BackendName, change, total.Value);
+                        stopwatch.Restart();
+                    }
+
+                    var batch = (More: false, Rebuilt: 0);
+                    await RunWithConcurrencyRetryAsync(
+                        async () => batch = await RebuildNextBatchAsync(pacing.BatchSize, cancellationToken).ConfigureAwait(false),
+                        cancellationToken).ConfigureAwait(false);
+                    rebuilt += batch.Rebuilt;
+                    if (!batch.More)
+                        break;
+
+                    if (pacing.ConsecutiveFailures > 0)
+                        LogRebuildRecovered(Logger, BackendName, pacing.ConsecutiveFailures);
+                    pacing.Succeeded(stopwatch.Elapsed);
+                    PublishRebuild(r => r with
+                    {
+                        Status = KeywordIndexRebuildStatus.Running,
+                        Error = null,
+                        ConsecutiveFailures = 0,
+                        NextAttemptAt = null,
+                        BatchSize = pacing.BatchSize,
+                    });
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                {
+                    var delay = pacing.Failed();
+                    PublishRebuild(r => r with
+                    {
+                        Status = KeywordIndexRebuildStatus.Retrying,
+                        Error = ex.Message,
+                        ConsecutiveFailures = pacing.ConsecutiveFailures,
+                        NextAttemptAt = DateTimeOffset.UtcNow + delay,
+                        BatchSize = pacing.BatchSize,
+                    });
+                    LogRebuildBatchFailed(Logger, BackendName, pacing.ConsecutiveFailures, delay.TotalSeconds, pacing.BatchSize, ex);
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                }
             }
 
             Volatile.Write(ref _rebuild, null);
@@ -2363,20 +2392,27 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            Volatile.Write(ref _rebuild, Volatile.Read(ref _rebuild)! with { Status = KeywordIndexRebuildStatus.Interrupted });
+            PublishRebuild(r => r with { Status = KeywordIndexRebuildStatus.Interrupted, NextAttemptAt = null });
             LogRebuildInterrupted(Logger, BackendName);
-        }
-        catch (Exception ex)
-        {
-            _rebuildFailure = ex;
-            Volatile.Write(ref _rebuild, Volatile.Read(ref _rebuild)! with { Status = KeywordIndexRebuildStatus.Failed, Error = ex.Message });
-            LogRebuildFailed(Logger, BackendName, ex);
         }
     }
 
+    /// <summary>Replaces the published rebuild state; only the rebuild task writes it.</summary>
+    private void PublishRebuild(Func<KeywordIndexRebuild, KeywordIndexRebuild> update)
+        => Volatile.Write(ref _rebuild, update(Volatile.Read(ref _rebuild)!));
+
+    /// <summary>The command timeout statements on this index's connections run under (zero when there is none).</summary>
+    private TimeSpan ReadCommandTimeout()
+    {
+        using var connection = CreateConnection();
+        using var command = connection.CreateCommand();
+        return TimeSpan.FromSeconds(command.CommandTimeout);
+    }
+
     /// <summary>
-    /// Re-tokenizes the next batch after the cursor in one transaction and moves the cursor with it, or - when no chunk
-    /// is left - records the analyzer and removes the rebuild's marker. Returns whether a batch was written.
+    /// Re-tokenizes the next batch of up to <paramref name="batchSize"/> chunks after the cursor in one transaction and
+    /// moves the cursor with it, or - when no chunk is left - records the analyzer and removes the rebuild's marker.
+    /// Returns whether a batch was written.
     /// </summary>
     /// <remarks>
     /// The batch's chunks are locked before they are read, inside the transaction that writes them: a chunk a writer
@@ -2384,7 +2420,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// rather than its earlier text written over the new one. The marker row is locked first, so a second process
     /// rebuilding the same index waits for this batch and then continues after it.
     /// </remarks>
-    private async Task<(bool More, int Rebuilt)> RebuildNextBatchAsync(CancellationToken cancellationToken)
+    private async Task<(bool More, int Rebuilt)> RebuildNextBatchAsync(int batchSize, CancellationToken cancellationToken)
     {
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -2400,7 +2436,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             var after = (await ReadStatisticKeysAsync(connection, RebuildCursorKeyPrefix, cancellationToken).ConfigureAwait(false))
                 .Select(key => key[RebuildCursorKeyPrefix.Length..])
                 .Max(StringComparer.Ordinal);
-            var ids = await ReadChunkIdPageAsync(connection, after, RebuildBatchSize, cancellationToken).ConfigureAwait(false);
+            var ids = await ReadChunkIdPageAsync(connection, after, batchSize, cancellationToken).ConfigureAwait(false);
             if (ids.Count == 0)
             {
                 await DeleteStatisticKeysAsync(connection, [RebuildTargetKeyPrefix, RebuildCursorKeyPrefix], cancellationToken).ConfigureAwait(false);
@@ -3200,8 +3236,13 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index ({Backend}) rebuild interrupted; the next open continues it")]
     private static partial void LogRebuildInterrupted(ILogger logger, string backend);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Keyword index ({Backend}) rebuild failed; the next open retries it")]
-    private static partial void LogRebuildFailed(ILogger logger, string backend, Exception exception);
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "Keyword index ({Backend}) rebuild batch failed ({Failures} in a row); retrying from the last committed batch in {DelaySeconds} s with {BatchSize} chunks per batch")]
+    private static partial void LogRebuildBatchFailed(ILogger logger, string backend, int failures, double delaySeconds, int batchSize, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index ({Backend}) rebuild continues after {Failures} failed batch(es)")]
+    private static partial void LogRebuildRecovered(ILogger logger, string backend, int failures);
 
     #endregion
 }

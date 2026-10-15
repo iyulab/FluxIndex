@@ -455,13 +455,18 @@ re-tokenizing (an information line says so); if any sampled chunk differs, the i
 The re-tokenization runs in the background (since 0.96.0): opening returns once the schema is ready,
 and searches and writes meanwhile run against the index as it stands, so keyword recall is partial
 until it completes. It works a batch per transaction and records its progress in the index, so a
-host stopped part-way continues on its next open instead of starting over. `IKeywordSearchService`
+host stopped part-way continues on its next open instead of starting over. Batches start at 50
+chunks and grow or shrink with how long they take against the connection's command timeout; a batch
+that fails (a timeout, a dropped connection) is retried in the process from the last committed batch
+after a growing delay (1 s, doubling, at most 5 min) until the rebuild finishes. `IKeywordSearchService`
 reports it and lets a host wait:
 
 - `GetStatisticsAsync()` → `Rebuild`: null when none runs; otherwise `Change`, `Completed` / `Total`
-  chunks and `Status` (`Running`, `Interrupted` by disposal, `Failed`).
-- `WaitForMaintenanceAsync()` completes when it has finished (throws if it failed) — await it before
-  serving when partial keyword recall is not acceptable, for example in a readiness check.
+  chunks, `BatchSize`, and `Status` (`Running`, `Retrying` with the last `Error`,
+  `ConsecutiveFailures` and `NextAttemptAt`, or `Interrupted` by disposal).
+- `WaitForMaintenanceAsync()` completes when it has finished — await it before serving when partial
+  keyword recall is not acceptable, for example in a readiness check. It keeps waiting while batches
+  are retried; pass a cancellation token to bound the wait.
 
 A custom `ITextAnalyzer` names itself through `Identity`: change the name whenever the same text
 would produce different terms.

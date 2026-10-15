@@ -354,6 +354,59 @@ public abstract class KeywordSearchDefinitionChangeContractSuite
         Assert.Equal(["b"], hits.Select(h => h.Chunk.Id));
     }
 
+    [Fact]
+    public async Task AFailedRebuildBatch_IsRetriedInTheProcess_AndReportedMeanwhile()
+    {
+        // A batch that fails (here the analyzer throws inside the batch's transaction twice; on a large store a statement
+        // that runs past the command timeout) rolls back and is tried again from the committed cursor, in this process.
+        var ct = TestContext.Current.CancellationToken;
+        var corpus = KoreanCorpus();
+        var built = await CreateServiceAsync(WordTextAnalyzer.Instance);
+        await built.IndexChunksAsync(corpus, ct);
+
+        var log = new ListLogger();
+        var failing = new FailingAnalyzer(CjkBigramTextAnalyzer.Instance, failOn: corpus[1].Content, failures: 2);
+        var reopened = await ReopenAsync(failing, logger: log);
+        await reopened.GetStatisticsAsync(ct);
+
+        KeywordIndexRebuild? retrying = null;
+        for (var i = 0; i < 300 && retrying is null; i++)
+        {
+            if ((await reopened.GetStatisticsAsync(ct)).Rebuild is { Status: KeywordIndexRebuildStatus.Retrying } r)
+                retrying = r;
+            else
+                await Task.Delay(10, ct);
+        }
+
+        Assert.NotNull(retrying);
+        Assert.Contains("analyzer failure", retrying.Error, StringComparison.Ordinal);
+        Assert.True(retrying.ConsecutiveFailures >= 1);
+        Assert.NotNull(retrying.NextAttemptAt);
+
+        await reopened.WaitForMaintenanceAsync(ct);
+
+        Assert.Null((await reopened.GetStatisticsAsync(ct)).Rebuild);
+        Assert.Equal(["1"], (await RankAsync(reopened, "정보", ct)).Select(r => r.Id));
+        Assert.Equal(2, log.Messages.Count(m => m.Level == LogLevel.Error && m.Text.Contains("rebuild batch failed", StringComparison.Ordinal)));
+        Assert.Contains(log.Messages, m => m.Text.Contains("rebuild continues after 2 failed batch(es)", StringComparison.Ordinal));
+    }
+
+    /// <summary>Delegates to another analyzer, and throws the first <paramref name="failures"/> times it is asked to analyze <paramref name="failOn"/>.</summary>
+    private sealed class FailingAnalyzer(ITextAnalyzer inner, string failOn, int failures) : ITextAnalyzer
+    {
+        private int _remaining = failures;
+
+        public string Identity => inner.Identity;
+
+        public IEnumerable<string> Tokenize(string text)
+        {
+            if (string.Equals(text, failOn, StringComparison.Ordinal) && Interlocked.Decrement(ref _remaining) >= 0)
+                throw new InvalidOperationException("analyzer failure (test)");
+
+            return inner.Tokenize(text).ToList();
+        }
+    }
+
     /// <summary>
     /// Delegates to another analyzer, and holds the first call that analyzes <paramref name="blockOn"/> until released -
     /// a rebuild caught inside its batch.

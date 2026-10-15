@@ -209,9 +209,14 @@ public interface IKeywordSearchService
     /// (<see cref="KeywordIndexStatistics.Rebuild"/>), which runs in the background so that opening does not wait for it.
     /// Searches and writes meanwhile run against the index as it stands, so keyword recall is partial until it ends; a
     /// host that must not serve partial recall awaits this before serving. Completes at once when nothing is running.
+    /// <para>
+    /// A batch that fails is retried in the process, with a growing delay, until the rebuild finishes or the service is
+    /// disposed - so this keeps waiting through a store outage. The failure is readable meanwhile:
+    /// <see cref="KeywordIndexRebuild.Status"/> is <see cref="KeywordIndexRebuildStatus.Retrying"/> and
+    /// <see cref="KeywordIndexRebuild.Error"/> names it. Bound the wait with <paramref name="cancellationToken"/>.
+    /// </para>
     /// </summary>
     /// <param name="cancellationToken">Stops the wait, not the maintenance.</param>
-    /// <exception cref="InvalidOperationException">The maintenance failed. The next open of the index retries it.</exception>
     Task WaitForMaintenanceAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>
@@ -430,11 +435,26 @@ public sealed record KeywordIndexRebuild
     /// <summary>When this process started, or resumed, the rebuild.</summary>
     public DateTimeOffset StartedAt { get; init; }
 
-    /// <summary>Whether it is running, or why it stopped before finishing.</summary>
+    /// <summary>Whether it is running, waiting to retry a failed batch, or why it stopped before finishing.</summary>
     public KeywordIndexRebuildStatus Status { get; init; }
 
-    /// <summary>The failure, when <see cref="Status"/> is <see cref="KeywordIndexRebuildStatus.Failed"/>.</summary>
+    /// <summary>
+    /// The last failure, while <see cref="Status"/> is <see cref="KeywordIndexRebuildStatus.Retrying"/>; null once a
+    /// batch succeeds again.
+    /// </summary>
     public string? Error { get; init; }
+
+    /// <summary>Batches that failed in a row; 0 while batches succeed.</summary>
+    public int ConsecutiveFailures { get; init; }
+
+    /// <summary>When the failed batch is tried again, while <see cref="Status"/> is <see cref="KeywordIndexRebuildStatus.Retrying"/>.</summary>
+    public DateTimeOffset? NextAttemptAt { get; init; }
+
+    /// <summary>
+    /// Chunks the next batch re-tokenizes in one transaction. It adapts to how long batches take against the command
+    /// timeout, and halves after a failure.
+    /// </summary>
+    public int BatchSize { get; init; }
 }
 
 /// <summary>Where a <see cref="KeywordIndexRebuild"/> stands.</summary>
@@ -446,6 +466,12 @@ public enum KeywordIndexRebuildStatus
     /// <summary>Stopped because the service was disposed; the next open continues it.</summary>
     Interrupted = 2,
 
-    /// <summary>Stopped by an error; the next open retries it.</summary>
-    Failed = 3,
+    // 3 was Failed: a failed batch no longer stops the rebuild (see Retrying). Left vacant so a stored number keeps
+    // its meaning.
+
+    /// <summary>
+    /// A batch failed; it is tried again from the last committed batch at <see cref="KeywordIndexRebuild.NextAttemptAt"/>.
+    /// <see cref="KeywordIndexRebuild.Error"/> names the failure.
+    /// </summary>
+    Retrying = 4,
 }
