@@ -1,6 +1,8 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.Exceptions;
+using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.Core.Application.Services.Base;
@@ -110,6 +112,80 @@ public abstract partial class VectorStoreBase : IVectorStore
 
     #endregion
 
+    #region Embedding identity
+
+    private EmbeddingIdentity? _boundIdentity;
+    private volatile bool _identityVerified;
+
+    /// <inheritdoc />
+    public EmbeddingIdentity? BoundIdentity => _boundIdentity;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Binding a different identity than the one already bound throws <see cref="EmbeddingModelMismatchException"/>. A
+    /// store that records the identity (<see cref="ReadRecordedIdentityAsync"/>) also compares it with the record at its
+    /// next write or search, so a model switched between processes — or between request scopes, for a store registered
+    /// per scope — is refused too.
+    /// </remarks>
+    public void BindIdentity(EmbeddingIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        if (_boundIdentity is { } bound)
+        {
+            if (bound != identity)
+                throw new EmbeddingModelMismatchException(bound, identity);
+            return;
+        }
+
+        _boundIdentity = identity;
+        _identityVerified = false;
+    }
+
+    /// <summary>
+    /// The identity recorded in the store (<see cref="EmbeddingIdentityRecord"/> form), or null when there is none. The
+    /// default records nothing: such a store guards its identity within one instance only.
+    /// </summary>
+    protected virtual Task<string?> ReadRecordedIdentityAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+
+    /// <summary>Records <paramref name="record"/> (<see cref="EmbeddingIdentityRecord"/> form) as the store's identity.</summary>
+    protected virtual Task WriteRecordedIdentityAsync(string record, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>Removes the recorded identity — the store holds no vectors any more.</summary>
+    protected virtual Task ForgetRecordedIdentityAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// Compares the bound identity with the recorded one, once per instance: a different record throws
+    /// <see cref="EmbeddingModelMismatchException"/>; no record gets the bound identity recorded — adopted with a warning
+    /// when the store already holds vectors written before identities were recorded. Nothing while no identity is bound.
+    /// </summary>
+    private async Task VerifyIdentityAsync(CancellationToken cancellationToken)
+    {
+        if (_identityVerified || _boundIdentity is not { } bound)
+            return;
+
+        if (EmbeddingIdentityRecord.Parse(await ReadRecordedIdentityAsync(cancellationToken)) is { } recorded)
+        {
+            if (recorded != bound)
+                throw new EmbeddingModelMismatchException(recorded, bound);
+        }
+        else
+        {
+            var held = await CountCoreAsync(cancellationToken);
+            await WriteRecordedIdentityAsync(EmbeddingIdentityRecord.Format(bound), cancellationToken);
+            if (held > 0 && Logger is not null)
+                LogIdentityAdopted(Logger, GetType().Name, held, bound.Provider, bound.Model, bound.Dimension);
+        }
+
+        _identityVerified = true;
+    }
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "{Store} holds {Count} vectors but recorded no embedding identity; recorded {Provider}/{Model} ({Dimension}d) as its identity. If its vectors were written by another model, re-index")]
+    private static partial void LogIdentityAdopted(ILogger logger, string store, int count, string provider, string model, int dimension);
+
+    #endregion
+
     #region IVectorStore Implementation
 
     /// <inheritdoc />
@@ -117,6 +193,7 @@ public abstract partial class VectorStoreBase : IVectorStore
     {
         ValidateChunk(chunk);
         PrepareMetadata(chunk);
+        await VerifyIdentityAsync(cancellationToken);
         return await StoreCoreAsync(chunk, cancellationToken);
     }
 
@@ -200,6 +277,7 @@ public abstract partial class VectorStoreBase : IVectorStore
         // Fail-loud at call time: unsupported filter values must throw here, not on (possibly
         // deferred) result enumeration, and regardless of whether any row reaches the backstop.
         ValidateFilters(filters);
+        await VerifyIdentityAsync(cancellationToken);
 
         var results = await SearchCoreAsync(queryEmbedding, topK, filters, cancellationToken);
 
@@ -406,6 +484,7 @@ public abstract partial class VectorStoreBase : IVectorStore
         chunk.Metadata = MetadataHelper.EnsureInitialized(chunk.Metadata);
         MetadataHelper.SetUpdatedTimestamp(chunk.Metadata);
 
+        await VerifyIdentityAsync(cancellationToken);
         return await UpdateCoreAsync(chunk, cancellationToken);
     }
 
@@ -428,9 +507,12 @@ public abstract partial class VectorStoreBase : IVectorStore
     }
 
     /// <inheritdoc />
-    public Task ClearAsync(CancellationToken cancellationToken = default)
+    /// <remarks>The recorded embedding identity goes with the vectors: the next write records the identity bound then.</remarks>
+    public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
-        return ClearCoreAsync(cancellationToken);
+        await ClearCoreAsync(cancellationToken);
+        await ForgetRecordedIdentityAsync(cancellationToken);
+        _identityVerified = false;
     }
 
     #endregion

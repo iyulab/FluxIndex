@@ -7,6 +7,17 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Changed
+- **Breaking: the PostgreSQL, plain SQLite and in-memory vector stores refuse a model other than the one their vectors
+  were written with.** `VectorStoreBase` now implements `BindIdentity`/`BoundIdentity`: binding a different identity on
+  the same instance throws `EmbeddingModelMismatchException`, and the PostgreSQL and SQLite stores record the identity in
+  a `fluxindex_vector_identity` table (created on first use) and compare it at the next write or search — so a later
+  request scope (both stores are registered Scoped) or process bound to another model is refused instead of mixing two
+  models' vectors in one table. A store that holds vectors but no record (written before this release) adopts the bound
+  identity with a warning; `ClearAsync` removes the record. A custom `VectorStoreBase` store gets the in-instance check
+  and can persist the record by overriding `ReadRecordedIdentityAsync` / `WriteRecordedIdentityAsync` /
+  `ForgetRecordedIdentityAsync`. `EmbeddingIdentityRecord` (Core) is the shared record format.
+
 ### Documentation
 - **The README states the SQLite stores' measured search latency**: full scan p50 6.6 s vs sqlite-vec 45 ms over 43,293
   vectors (identical top 10), with the guidance to use sqlite-vec past a few thousand chunks.

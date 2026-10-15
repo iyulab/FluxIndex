@@ -57,6 +57,50 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         }
     }
 
+    #region Recorded embedding identity
+
+    // The vectors' embedding identity, one row per vector table, so a later instance (another process, another request
+    // scope) bound to another model is refused instead of writing a second model's vectors into the same table.
+    private const string IdentityStoreKey = "vectors";
+
+    private async Task<SQLiteDbContext> OpenIdentityTableAsync(CancellationToken cancellationToken)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+        var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await context.Database.ExecuteSqlRawAsync(
+            "CREATE TABLE IF NOT EXISTS fluxindex_vector_identity (store_key TEXT PRIMARY KEY, identity_record TEXT NOT NULL)",
+            cancellationToken);
+        return context;
+    }
+
+    /// <inheritdoc />
+    protected override async Task<string?> ReadRecordedIdentityAsync(CancellationToken cancellationToken)
+    {
+        await using var context = await OpenIdentityTableAsync(cancellationToken);
+        return await context.Database
+            .SqlQuery<string>($"SELECT identity_record AS \"Value\" FROM fluxindex_vector_identity WHERE store_key = {IdentityStoreKey}")
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    protected override async Task WriteRecordedIdentityAsync(string record, CancellationToken cancellationToken)
+    {
+        await using var context = await OpenIdentityTableAsync(cancellationToken);
+        await context.Database.ExecuteSqlAsync(
+            $"INSERT INTO fluxindex_vector_identity (store_key, identity_record) VALUES ({IdentityStoreKey}, {record}) ON CONFLICT (store_key) DO UPDATE SET identity_record = excluded.identity_record",
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    protected override async Task ForgetRecordedIdentityAsync(CancellationToken cancellationToken)
+    {
+        await using var context = await OpenIdentityTableAsync(cancellationToken);
+        await context.Database.ExecuteSqlAsync(
+            $"DELETE FROM fluxindex_vector_identity WHERE store_key = {IdentityStoreKey}", cancellationToken);
+    }
+
+    #endregion
+
     #region VectorStoreBase Core Implementations
 
     protected override async Task<string> StoreCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
