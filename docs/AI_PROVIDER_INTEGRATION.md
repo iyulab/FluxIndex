@@ -109,8 +109,9 @@ var context = FluxIndexContext.CreateBuilder()
 
 인덱스 Identity 는 문서 생성기 메타데이터의 provider · model id · 차원이고, 쓸 때마다 메타데이터에서 읽는다 — 모델을 실행 중에
 고르는 호스트도 모델이 정해지기 전에 등록할 수 있다. 쓰는 시점에 생성기가 model id 를 알리지 않거나 차원을 알 수 없으면
-(`EmbeddingGeneratorMetadata.DefaultModelDimensions` 가 null) 예외가 나고, 이미 다른 모델로 바인딩된 저장소에서 모델을 바꾸면
-`EmbeddingModelMismatchException` 이 난다(재색인하거나 새 모델에 별도 컬렉션을 준다). 차원은
+(`EmbeddingGeneratorMetadata.DefaultModelDimensions` 가 null) 예외가 난다. 저장소는 쓸 때마다 Identity 에 바인딩된다 — Qdrant 는
+인덱스 아래에서 바뀐 모델을 `EmbeddingModelMismatchException` 으로 거부하고(재색인하거나 `ModelFingerprint` 컬렉션 이름을 쓴다),
+sqlite-vec 는 새 모델에 자기 테이블을 준다. PostgreSQL·일반 SQLite 저장소는 아직 검사하지 않는다. 차원은
 `configure: o => o.Dimensions = 1024` 로 준다. DI 에서는 `services.AddEmbeddingGeneratorEmbedding(queriesServiceKey: "query")` 가
 컨테이너의 생성기(질의 쪽은 keyed)를 쓴다.
 

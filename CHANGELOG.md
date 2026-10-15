@@ -31,8 +31,10 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   model id or dimension, or an `EmbeddingGeneratorServiceOptions.Dimensions` that contradicts the generator, now throws
   `InvalidOperationException` at that use instead of `ArgumentException` from the constructor (a non-positive
   `Dimensions` is still refused at construction). `Retriever` and `Indexer` bind the vector store to the identity on
-  each vector operation rather than in their constructors, so a store that guards its identity (Qdrant, sqlite-vec)
-  refuses a model switched under an existing index with `EmbeddingModelMismatchException`. Migration: catch
+  each vector operation rather than in their constructors, so the store sees the model that embeds each request: the
+  Qdrant store refuses a model switched under its index with `EmbeddingModelMismatchException`, and the sqlite-vec store
+  names its vector table by the model's fingerprint, so a new model writes and searches its own table. (The PostgreSQL
+  and plain SQLite stores do not check the identity yet.) Migration: catch
   `InvalidOperationException` where you caught the constructor's `ArgumentException`.
 
 ### Dependencies

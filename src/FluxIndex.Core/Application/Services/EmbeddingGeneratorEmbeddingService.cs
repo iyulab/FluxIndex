@@ -44,9 +44,9 @@ public sealed class EmbeddingGeneratorServiceOptions
 /// generator's <see cref="EmbeddingGeneratorMetadata"/> each time it is asked for, not once at construction, so a host
 /// whose model is chosen at run time (a settings screen, a fallback chain) can register the service before a model is
 /// set. Asking for the identity, or embedding, while the generator reports no model id or no dimension throws: two
-/// models would otherwise share an index fingerprint. A store already bound to one identity refuses another
-/// (<see cref="Domain.Exceptions.EmbeddingModelMismatchException"/>) - switching the model of an index means
-/// re-indexing it, or giving the new model its own collection.
+/// models would otherwise share an index fingerprint. Switching the model of an index means re-indexing it, or giving the
+/// new model its own collection; a store bound to one identity refuses another
+/// (<see cref="Domain.Exceptions.EmbeddingModelMismatchException"/>).
 /// The service does not dispose the generators.
 /// </para>
 /// </remarks>
