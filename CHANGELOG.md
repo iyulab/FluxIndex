@@ -17,6 +17,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   done. Migration: bind the identity before clearing a `ModelFingerprint` store directly, and handle the delete failure
   where you call it.
 
+### Dependencies
+- Re-pinned sibling package(s) `FileFlux` 0.63.1 -> 0.64.0, `FluxCurator` 0.15.0 -> 0.16.0.
+
 ---
 
 ## [0.98.0] - 2026-10-15
