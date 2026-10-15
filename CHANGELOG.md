@@ -8,6 +8,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [Unreleased]
 
 ### Fixed
+- **A Qdrant collection named without the model refuses a switched model after a restart too.** With
+  `CollectionNamingStrategy.Fixed`, the store records the bound embedding identity (provider, model, dimension, revision)
+  in the collection metadata and compares it when a later instance — another process, a restart — binds an identity:
+  a different one throws `EmbeddingModelMismatchException` instead of storing and searching vectors of two models in
+  one collection. A collection that holds points but no record (written before this release) adopts the bound identity
+  with a warning; recording leaves the collection's other settings (quantization) as they are. `ModelFingerprint`
+  collections already carry the model in their name and are unchanged. A Qdrant server that keeps no collection metadata
+  falls back to the in-process check.
 - **Breaking: `QdrantVectorStore.ClearAsync` clears the store's collection on a new instance too.** It used to return
   without deleting anything until the instance had stored or searched once, so a startup clear (a reset command, a test
   fixture) left the data an earlier process wrote. It now clears the collection the naming strategy names — the base name

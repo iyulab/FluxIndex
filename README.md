@@ -28,8 +28,8 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   model id and dimension, read from its metadata each time it is used — so a host whose model is picked at run time can
   register it before a model is set. Using it while it reports no model id, or no dimension and none set
   (`EmbeddingGeneratorServiceOptions.Dimensions`), throws. The store is bound to the identity on each use: Qdrant refuses
-  a model switched under its index (`EmbeddingModelMismatchException` — re-index, or use `ModelFingerprint` collection
-  naming), sqlite-vec gives a new model its own table; the PostgreSQL and plain SQLite stores do not check it yet.
+  a model switched under its index, across restarts too (it records the identity in the collection metadata;
+  `EmbeddingModelMismatchException` — re-index, or use `ModelFingerprint` collection naming), sqlite-vec gives a new model its own table; the PostgreSQL and plain SQLite stores do not check it yet.
 - **Batch indexing** — `Indexer.IndexBatchAsync(documents, progress, parallelism)`; chunk embeddings go through
   `IEmbeddingService.GenerateEmbeddingsBatchAsync`. A document that cannot be indexed does not stop the batch, and is not
   dropped silently: the others are written, then `BatchIndexingException` names each one left out (`Failures`) and the

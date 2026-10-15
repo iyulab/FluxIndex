@@ -133,6 +133,8 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
                         $"Qdrant collection '{collectionName}' does not exist and CreateCollectionOnStartup is disabled. Create the collection or enable auto-create.");
                 }
 
+                await VerifyRecordedIdentityAsync(collectionName, created: !exists, ct);
+
                 // Serving an empty collection while a sibling of the same base name holds data means
                 // the resolved name changed under an existing deployment (naming strategy, or the
                 // bound embedding identity). Nothing else reports it: the collection is valid and
@@ -164,6 +166,53 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
         {
             _initLock.Release();
         }
+    }
+
+    /// <summary>The collection metadata key under which the embedding identity of the stored vectors is recorded.</summary>
+    internal const string IdentityMetadataKey = "fluxindex_embedding_identity";
+
+    /// <summary>
+    /// Compares the embedding identity recorded in the collection's metadata with the bound one, so a model switched
+    /// under an existing collection is refused across restarts, not only within one process.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only where the collection name does not already carry the identity: with
+    /// <see cref="CollectionNamingStrategy.ModelFingerprint"/> and a bound identity every model has its own collection.
+    /// Nothing is checked while no identity is bound.
+    /// </para>
+    /// <para>
+    /// A recorded identity that differs throws <see cref="EmbeddingModelMismatchException"/>. A collection without a
+    /// record gets the bound identity recorded; when it already holds points (written before identities were recorded)
+    /// the identity is adopted with a warning, since nothing says which model wrote them - refusing would break every
+    /// existing deployment on upgrade. A server that keeps no collection metadata never returns a record, so the check
+    /// degrades to the in-process one.
+    /// </para>
+    /// </remarks>
+    private async Task VerifyRecordedIdentityAsync(string collectionName, bool created, CancellationToken ct)
+    {
+        if (_boundIdentity is not { } current)
+            return;
+        if (_options.NamingStrategy == CollectionNamingStrategy.ModelFingerprint)
+            return;
+
+        var info = await _client.GetCollectionInfoAsync(collectionName, ct);
+        if (info.Config?.Metadata is { } metadata
+            && metadata.TryGetValue(IdentityMetadataKey, out var value)
+            && RecordedIdentity.Parse(value.StringValue) is { } recorded)
+        {
+            if (recorded != current)
+                throw new EmbeddingModelMismatchException(recorded, current);
+            return;
+        }
+
+        var hasPoints = !created && await _client.CountAsync(collectionName, cancellationToken: ct) > 0;
+        await _client.UpdateCollectionAsync(
+            collectionName,
+            metadata: new Dictionary<string, Value> { [IdentityMetadataKey] = RecordedIdentity.Format(current) },
+            cancellationToken: ct);
+        if (hasPoints)
+            LogIdentityAdopted(_logger, collectionName, current.Provider, current.Model, current.Dimension);
     }
 
     /// <summary>
@@ -1209,6 +1258,11 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Cleared Qdrant collection '{CollectionName}'")]
     private static partial void LogCollectionCleared(ILogger logger, string collectionName);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Qdrant collection '{CollectionName}' holds points but recorded no embedding identity; recorded {Provider}/{Model} ({Dimension}d) as its identity. If its points were written by another model, re-index it")]
+    private static partial void LogIdentityAdopted(ILogger logger, string collectionName, string provider, string model, int dimension);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Search dimension changed from {OldDimension} to {NewDimension}, switching collection")]
     private static partial void LogDimensionSwitch(ILogger logger, int oldDimension, int newDimension);
