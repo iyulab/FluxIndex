@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.98.0] - 2026-10-15
 
 ### Changed
 - **Breaking: a keyword-index rebuild no longer stops on a failed batch — it retries in the process until it finishes.**
