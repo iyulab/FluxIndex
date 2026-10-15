@@ -374,5 +374,46 @@ public class DimensionAdaptationTests : IAsyncLifetime
         (await vectorStore.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
+    [Fact]
+    public async Task Clear_OnANewInstance_RemovesTheCollectionAnEarlierInstanceFilled()
+    {
+        // A startup clear runs on a fresh instance (a new process) that has not resolved its collection yet; the data
+        // it is meant to remove is exactly what an earlier process left.
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
+        var ct = TestContext.Current.CancellationToken;
+        var baseName = $"clear_fixed_{Guid.NewGuid():N}";
+        await using (var earlier = CreateVectorStore(baseName, CollectionNamingStrategy.Fixed, vectorSize: 384))
+        {
+            await earlier.StoreAsync(CreateTestChunk(384), ct);
+            (await earlier.CountAsync(ct)).Should().Be(1);
+        }
+
+        await using var fresh = CreateVectorStore(baseName, CollectionNamingStrategy.Fixed, vectorSize: 384);
+        await fresh.ClearAsync(ct);
+
+        (await _qdrantClient!.ListCollectionsAsync(ct)).Should().NotContain(baseName);
+        (await fresh.CountAsync(ct)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Clear_WithModelFingerprintAndNoIdentity_OnANewInstance_RefusesRatherThanGuess()
+    {
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
+        await using var fresh = CreateVectorStore($"clear_fp_{Guid.NewGuid():N}");
+
+        var act = () => fresh.ClearAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*BindIdentity*");
+    }
+
+    [Fact]
+    public async Task Clear_WhenTheCollectionDoesNotExist_IsANoOp()
+    {
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
+        await using var fresh = CreateVectorStore($"clear_none_{Guid.NewGuid():N}", CollectionNamingStrategy.Fixed, vectorSize: 384);
+
+        await fresh.ClearAsync(TestContext.Current.CancellationToken);
+    }
+
     #endregion
 }

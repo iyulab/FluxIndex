@@ -1061,30 +1061,47 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
         return documentIds.Count;
     }
 
+    /// <summary>
+    /// Deletes this store's collection - the one a first store or search would use, whether or not this instance has
+    /// touched it yet. The next store or search creates it again.
+    /// </summary>
+    /// <remarks>
+    /// The collection is the one this instance resolved, or else the one the naming strategy names: the base name
+    /// (<see cref="CollectionNamingStrategy.Fixed"/>), or the base name and the bound identity's fingerprint
+    /// (<see cref="CollectionNamingStrategy.ModelFingerprint"/>). A missing collection is nothing to clear.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// The naming strategy is <see cref="CollectionNamingStrategy.ModelFingerprint"/>, no identity is bound, and this
+    /// instance has not resolved a collection: which collection is this store's cannot be known.
+    /// </exception>
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         await _initLock.WaitAsync(cancellationToken);
         try
         {
-            // If not initialized, nothing to clear
-            if (_resolvedCollectionName == null)
+            var collectionToClear = _resolvedCollectionName ?? _options.NamingStrategy switch
             {
-                LogClearNoCollection(_logger);
-                return;
+                CollectionNamingStrategy.ModelFingerprint when _boundIdentity is not null
+                    => $"{_options.BaseCollectionName}_{_boundIdentity.Fingerprint}",
+                CollectionNamingStrategy.ModelFingerprint => throw new InvalidOperationException(
+                    $"Cannot tell which collection to clear: the naming strategy is ModelFingerprint and no embedding identity " +
+                    $"is bound, so the collection under '{_options.BaseCollectionName}' depends on the model. Bind the " +
+                    "identity (BindIdentity) first, or use the store through a retriever or indexer that binds it."),
+                _ => _options.BaseCollectionName
+            };
+
+            var collections = await _client.ListCollectionsAsync(cancellationToken);
+            if (!collections.Any(c => c == collectionToClear))
+            {
+                LogClearNoCollection(_logger, collectionToClear);
             }
-
-            var collectionToClear = _resolvedCollectionName;
-
-            try
+            else
             {
+                // A failed delete propagates: a caller that clears for a clean start must not proceed over old data.
 #pragma warning disable CA2016 // Qdrant SDK does not accept CancellationToken for DeleteCollectionAsync
                 await _client.DeleteCollectionAsync(collectionToClear);
 #pragma warning restore CA2016
                 LogCollectionCleared(_logger, collectionToClear);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-            {
-                LogDeleteCollectionFailed(_logger, ex, collectionToClear);
             }
 
             // Reset state under lock to prevent race conditions
@@ -1187,14 +1204,11 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
     [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted chunks for document {DocumentId}")]
     private static partial void LogDocumentChunksDeleted(ILogger logger, string documentId);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Clear called but no collection initialized")]
-    private static partial void LogClearNoCollection(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Clear: Qdrant collection '{CollectionName}' does not exist, nothing to clear")]
+    private static partial void LogClearNoCollection(ILogger logger, string collectionName);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Cleared Qdrant collection '{CollectionName}'")]
     private static partial void LogCollectionCleared(ILogger logger, string collectionName);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to delete Qdrant collection '{CollectionName}'")]
-    private static partial void LogDeleteCollectionFailed(ILogger logger, Exception exception, string collectionName);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Search dimension changed from {OldDimension} to {NewDimension}, switching collection")]
     private static partial void LogDimensionSwitch(ILogger logger, int oldDimension, int newDimension);

@@ -5,6 +5,20 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Breaking: `QdrantVectorStore.ClearAsync` clears the store's collection on a new instance too.** It used to return
+  without deleting anything until the instance had stored or searched once, so a startup clear (a reset command, a test
+  fixture) left the data an earlier process wrote. It now clears the collection the naming strategy names — the base name
+  (`Fixed`), or the base name plus the bound identity's fingerprint (`ModelFingerprint`) — and a missing collection is
+  nothing to clear. With `ModelFingerprint`, no bound identity and nothing resolved yet it throws
+  `InvalidOperationException` instead of guessing; a failed delete now propagates instead of being logged and treated as
+  done. Migration: bind the identity before clearing a `ModelFingerprint` store directly, and handle the delete failure
+  where you call it.
+
+---
+
 ## [0.98.0] - 2026-10-15
 
 ### Changed
