@@ -50,7 +50,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   the sum, so BM25 ranks such a chunk as it ranks the lower-cased text.
 
 ### Dependencies
-- Re-pinned sibling package(s) `FileFlux` 0.63.0 -> 0.63.1, `LMSupply.Embedder` 0.121.0 -> 0.122.0, `LMSupply.Generator` 0.121.0 -> 0.122.0, `LMSupply.Reranker` 0.121.0 -> 0.122.0.
+- Re-pinned sibling package(s) `FileFlux` 0.63.0 -> 0.63.1, `LMSupply.Embedder` 0.121.0 -> 0.122.0, `LMSupply.Generator` 0.121.0 -> 0.122.0, `LMSupply.Reranker` 0.121.0 -> 0.122.0. `FluxIndex.Providers.LMSupply` 0.96.0 is built against LMSupply 0.122.0, which renamed the embedder's `ModelInfo` to `EmbedderModelInfo`: move `LMSupply.*` and `FluxIndex.Providers.LMSupply` together (0.95.0 with LMSupply 0.122.0 fails at run time).
 
 ## [0.95.0] - 2026-10-15
 
