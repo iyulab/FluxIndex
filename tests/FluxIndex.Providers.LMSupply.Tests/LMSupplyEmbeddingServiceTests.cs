@@ -160,7 +160,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
         var model = Substitute.For<IEmbeddingModel>();
         model.Dimensions.Returns(384);
         model.ModelId.Returns("intfloat/multilingual-e5-small");
-        model.GetModelInfo().Returns(new global::LMSupply.Embedder.Utils.ModelInfo
+        model.GetModelInfo().Returns(new global::LMSupply.Embedder.Utils.EmbedderModelInfo
         {
             RepoId = "intfloat/multilingual-e5-small", Dimensions = 384, MaxSequenceLength = 512, DoLowerCase = false,
             PoolingMode = global::LMSupply.Embedder.PoolingMode.Mean, QueryPrefix = query, PassagePrefix = passage

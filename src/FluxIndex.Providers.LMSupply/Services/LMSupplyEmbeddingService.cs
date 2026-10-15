@@ -344,7 +344,7 @@ public sealed partial class LMSupplyEmbeddingService : EmbeddingServiceBase, IAs
     /// </summary>
     private bool? AppliesPrefixes => LoadedModel is { } model ? HasPrefixes(model.GetModelInfo()) : _announcedPrefixed;
 
-    private static bool HasPrefixes(ModelInfo? info) =>
+    private static bool HasPrefixes(EmbedderModelInfo? info) =>
         !string.IsNullOrEmpty(info?.QueryPrefix) || !string.IsNullOrEmpty(info?.PassagePrefix);
 
     private string? WithPrefixMarker(string? revision)
