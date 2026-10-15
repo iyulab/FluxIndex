@@ -64,4 +64,62 @@ public class HybridFusionTests
         Assert.Single(HybridFusion.Fuse(Vector, Sparse, fusion, maxResults: 1, minFusedScore: 0));
         Assert.Empty(HybridFusion.Fuse(Vector, Sparse, fusion, maxResults: 10, minFusedScore: 2.0));
     }
+
+    private static readonly IReadOnlyList<GraphChunkHit> Graph =
+    [
+        new(new DocumentChunk { Id = "g" }, 2.0, 1, ["e1"], 0),
+        new(new DocumentChunk { Id = "a" }, 1.0, 2, ["e1"], 1),
+    ];
+
+    public static TheoryData<FusionMethod> GraphMethods => new(Enum.GetValues<FusionMethod>().Where(HybridFusion.AcceptsGraphLeg));
+
+    [Theory]
+    [MemberData(nameof(GraphMethods))]
+    public void Fuse_WithGraphLeg_KeepsGraphOnlyRowsAndMarksSharedOnes(FusionMethod method)
+    {
+        var fusion = new AppliedFusion(method, 0.6, 0.4, 60, FusionSelection.Caller, GraphWeight: 0.3);
+
+        var rows = HybridFusion.Fuse(Vector, Sparse, Graph, fusion, maxResults: 10, minFusedScore: 0);
+
+        var g = Assert.Single(rows, r => r.Chunk.Id == "g");
+        Assert.Equal(SearchSource.Graph, g.Source);
+        Assert.Equal((2.0, 1), (g.GraphScore, g.GraphRank));
+        Assert.Equal((int.MaxValue, int.MaxValue), (g.VectorRank, g.SparseRank));
+        var a = rows.Single(r => r.Chunk.Id == "a");
+        Assert.Equal(SearchSource.Vector | SearchSource.Graph, a.Source);
+        Assert.Equal(2, a.GraphRank);
+        Assert.Equal(int.MaxValue, rows.Single(r => r.Chunk.Id == "c").GraphRank);
+        Assert.Equal(Enumerable.Range(1, rows.Count), rows.Select(r => r.FusedRank));
+        Assert.All(rows, r => Assert.InRange(r.Confidence, 0.0, 1.0));
+    }
+
+    [Theory]
+    [MemberData(nameof(GraphMethods))]
+    public void Fuse_GraphLegAddsOnTop_SoTextRowsTheGraphMissedScoreAsBefore(FusionMethod method)
+    {
+        var withoutGraph = HybridFusion.Fuse(Vector, Sparse, new AppliedFusion(method, 0.6, 0.4, 60, FusionSelection.Caller), 10, 0);
+        var withGraph = HybridFusion.Fuse(Vector, Sparse, Graph, new AppliedFusion(method, 0.6, 0.4, 60, FusionSelection.Caller, GraphWeight: 0.3), 10, 0);
+
+        foreach (var id in new[] { "b", "c" })
+            Assert.Equal(withoutGraph.Single(r => r.Chunk.Id == id).FusedScore, withGraph.Single(r => r.Chunk.Id == id).FusedScore, 12);
+        Assert.True(withGraph.Single(r => r.Chunk.Id == "a").FusedScore >= withoutGraph.Single(r => r.Chunk.Id == "a").FusedScore);
+    }
+
+    [Theory]
+    [InlineData(FusionMethod.Product)]
+    [InlineData(FusionMethod.HarmonicMean)]
+    public void Fuse_IntersectingMethodWithGraphHits_Throws(FusionMethod method)
+    {
+        Assert.False(HybridFusion.AcceptsGraphLeg(method));
+        Assert.Throws<ArgumentException>(() =>
+            HybridFusion.Fuse(Vector, Sparse, Graph, new AppliedFusion(method, 0.6, 0.4, 60, FusionSelection.Caller, 0.3), 10, 0));
+    }
+
+    [Fact]
+    public void SearchSource_ValuesAreStableFlags()
+    {
+        Assert.Equal([0, 1, 2, 3, 4], new[] { SearchSource.None, SearchSource.Vector, SearchSource.Sparse, SearchSource.Both, SearchSource.Graph }.Select(s => (int)s));
+        Assert.True(new HybridSearchResult { Source = SearchSource.Both | SearchSource.Graph, Confidence = 0.9 }.IsHighConfidence);
+        Assert.False(new HybridSearchResult { Source = SearchSource.Vector | SearchSource.Graph, Confidence = 0.9 }.IsHighConfidence);
+    }
 }

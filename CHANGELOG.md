@@ -14,8 +14,22 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `MaxHops` around them (`HopDecay` per hop), scored per chunk by the entities it mentions — within the same metadata
   `Filters` the vector and keyword legs take (a document scope also cuts entities before chunks are fetched). Every graph
   store registration registers it (`AddGraphChunkRetrieval`).
+- **The persisted graph as a third leg of a scoped hybrid search: `HybridSearchOptions.GraphOptions`.** Set a
+  `GraphLegOptions` (the retriever's options plus `Weight`, default 0.3, added on top of the vector and keyword weights) and
+  `IHybridSearchService` — the core service and the Qdrant service alike — fuses the graph's chunks with the other two
+  legs under the same `Filters` (the leg's own `Filters` win when set). Rows carry `GraphScore` and `GraphRank`
+  (`int.MaxValue` when the graph did not find the row) and `AppliedFusion.GraphWeight`. RRF, WeightedSum,
+  RelativeScoreFusion and Maximum take the third leg; Product or HarmonicMean set with it throws `ArgumentException`, and a
+  service-chosen one becomes RRF. Asking for the leg without a registered graph store throws `InvalidOperationException`.
+  A failing graph backend empties the leg like the other two; leaving `GraphOptions` null changes nothing.
 
 ### Changed
+- **Breaking:** `SearchSource` is a `[Flags]` enum with explicit values — `None = 0`, `Vector = 1`, `Sparse = 2`,
+  `Both = 3`, `Graph = 4` (before: `Vector = 0`, `Sparse = 1`, `Both = 2`). A row the graph leg also found is
+  `Vector | Graph` and so on. Migration: compare with `HasFlag` (or `& SearchSource.Both`) where the graph leg can be on,
+  and re-read any stored numeric value.
+- **The Qdrant hybrid search service is registered Scoped** (was Singleton), like the core service: it now takes the graph
+  leg's retriever, which takes a scoped graph store on SQLite and PostgreSQL.
 - **PostgreSQL: indexing new vocabulary is several times faster.** `bm25_terms.term` now uses the `"C"` collation (byte
   order). Terms are only compared for equality and sorted to give writers one insert order, so the database's
   linguistic collation bought nothing and cost every term insert and document-frequency update a locale comparison per

@@ -55,6 +55,10 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   particle-suffixed «삼성전자의» finds «삼성전자»), the entities up to `MaxHops` around them, and the chunks they were extracted
   from — a chunk that mentions several of the query's entities ranks first. `Filters` scope it like the vector and keyword
   legs. Registered by every graph store registration (`AddSQLiteEntityGraphStore`, `AddPostgresEntityGraph`, `AddNeo4jGraphStore`, and the builder paths that call them).
+  **As a hybrid-search leg**: `HybridSearchOptions.GraphOptions = new GraphLegOptions { Partition, MaxHops, Weight }` fuses
+  it with the vector and keyword legs under the query's `Filters` (RRF / WeightedSum / RelativeScoreFusion / Maximum);
+  rows carry `GraphScore` / `GraphRank`, and `SearchSource` is a flags enum (`Vector | Graph`). See
+  [Advanced RAG](./docs/ADVANCED_RAG.md#the-graph-as-a-retrieval-leg-of-a-scoped-hybrid-search).
   **GraphRAG**: opt-in with `ConfigureServices(s => s.AddFullGraphRAG())`, which registers `IGraphRAGService` together
   with the entity graph, Leiden community detection and hierarchical summarization it needs — each a `TryAdd`, so an
   `IEntityGraphService` (or either of the others) you register first is the one it uses. Once the service is registered, `Indexer` builds the graph for

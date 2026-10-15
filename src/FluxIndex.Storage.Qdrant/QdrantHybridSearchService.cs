@@ -16,17 +16,24 @@ public partial class QdrantHybridSearchService : IHybridSearchService
     private readonly QdrantVectorStore _vectorStore;
     private readonly IKeywordSearchService _keywordSearchService;
     private readonly IEmbeddingService _embeddingService;
+    private readonly IGraphChunkRetriever? _graphRetriever;
     private readonly ILogger<QdrantHybridSearchService> _logger;
 
+    /// <summary>
+    /// Creates the service. <paramref name="graphRetriever"/> (registered with any graph store) serves
+    /// <see cref="HybridSearchOptions.GraphOptions"/>; without it a search that asks for the graph leg throws.
+    /// </summary>
     public QdrantHybridSearchService(
         QdrantVectorStore vectorStore,
         IKeywordSearchService keywordSearchService,
         IEmbeddingService embeddingService,
-        ILogger<QdrantHybridSearchService> logger)
+        ILogger<QdrantHybridSearchService> logger,
+        IGraphChunkRetriever? graphRetriever = null)
     {
         _vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         _keywordSearchService = keywordSearchService ?? throw new ArgumentNullException(nameof(keywordSearchService));
         _embeddingService = embeddingService ?? throw new ArgumentNullException(nameof(embeddingService));
+        _graphRetriever = graphRetriever;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -37,7 +44,7 @@ public partial class QdrantHybridSearchService : IHybridSearchService
         CancellationToken cancellationToken = default)
     {
         options ??= new HybridSearchOptions();
-        var fusion = ResolveFusion(options);
+        var fusion = HybridGraphLeg.Prepare(ResolveFusion(options), options, _graphRetriever);
         var candidateCount = options.MaxResults * 3; // Fetch more candidates for fusion
 
         LogHybridSearch(_logger, query);
@@ -61,10 +68,13 @@ public partial class QdrantHybridSearchService : IHybridSearchService
             MetadataFilter = sparseFilters is { Count: > 0 } ? sparseFilters : null
         }, cancellationToken);
 
-        await Task.WhenAll(vectorTask, bm25Task);
+        var graphTask = HybridGraphLeg.RunAsync(_graphRetriever, query, options, _logger, cancellationToken);
+
+        await Task.WhenAll(vectorTask, bm25Task, graphTask);
 
         var vectorResults = (await vectorTask).ToList();
         var bm25Results = (await bm25Task).ToList();
+        var graphResults = await graphTask;
 
         LogSearchResults(_logger, vectorResults.Count, bm25Results.Count);
 
@@ -72,6 +82,7 @@ public partial class QdrantHybridSearchService : IHybridSearchService
         return HybridFusion.Fuse(
             vectorResults.Select((chunk, i) => new VectorSearchResult { DocumentChunk = chunk, Score = chunk.Score ?? 0, Rank = i + 1 }).ToList(),
             bm25Results.Select(r => new SparseSearchResult { Chunk = r.Chunk, Score = r.Score, MatchedTerms = r.MatchedTerms }).ToList(),
+            graphResults,
             fusion,
             options.MaxResults,
             options.MinFusedScore);

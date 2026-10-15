@@ -299,6 +299,48 @@ than another tenant's. A consumer that does not partition never sets one and kee
 rows written before partitions existed (and the SQLite/PostgreSQL columns start-up provisioning adds
 for them) read as the default partition.
 
+### The graph as a retrieval leg of a scoped hybrid search
+
+`LoadIndexAsync` and the GraphRAG searches answer from an index held in memory. To use the persisted graph inside an
+ordinary scoped search — one query, one scope, graph candidates fused with the vector and keyword candidates, then your
+reranker — turn on the graph leg of `IHybridSearchService`. It reads the graph store directly; nothing is loaded per query.
+
+```csharp
+using FluxIndex.Core.Domain.Models;   // HybridSearchOptions, GraphLegOptions, SearchSource
+
+var results = await hybridSearch.SearchAsync("which suppliers does Acme share with Globex?", new HybridSearchOptions
+{
+    MaxResults = 20,
+    Filters = new Dictionary<string, object> { ["tenant"] = "tenant-7" },   // scopes all three legs
+    GraphOptions = new GraphLegOptions
+    {
+        Partition = "tenant-7",   // the graph partition the build wrote
+        MaxHops = 1,              // the named entities and their direct neighbours
+        Weight = 0.3,             // added on top of the vector and keyword weights
+    },
+}, ct);
+
+foreach (var row in results.Where(r => r.Source.HasFlag(SearchSource.Graph)))
+    Console.WriteLine($"{row.Chunk.Id}: graph rank {row.GraphRank}, score {row.GraphScore}");
+```
+
+How the leg finds chunks (`IGraphChunkRetriever`, usable on its own):
+
+- **Seeds** — every run of one to four words of the query, and every substring of a word written in Hangul or CJK, is
+  looked up exactly against the stored entity names in one round trip, so «삼성전자의» finds «삼성전자». A match all of
+  whose occurrences sit inside a longer match is dropped; at most `MaxSeedEntities` remain, longer names first.
+- **Walk** — up to `MaxHops` relationships from each seed in both directions, at most `MaxNodesPerSeed` entities; an
+  entity `n` hops away weighs `HopDecay^n`.
+- **Score** — a chunk scores the sum of the weights of the entities it mentions, so a chunk that mentions two of the
+  query's entities ranks above one that mentions one.
+- **Scope** — the leg takes `GraphOptions.Filters`, or the query's `Filters` when that is empty, with the vector store's
+  filter semantics. A `document_id` scope removes out-of-scope entities before any chunk is fetched.
+
+Fusion: RRF, WeightedSum, RelativeScoreFusion and Maximum take a third leg. Product and HarmonicMean keep only rows both
+text legs found, so setting either with the graph leg throws, and when the service picks the method it picks RRF instead.
+`SearchSource` is a flags enum: a row the graph also found is `Vector | Graph`, `Both | Graph`, …; test it with `HasFlag`.
+Without a registered graph store (which registers the retriever) a search that asks for the leg throws.
+
 ### Loading a persisted index after a restart
 
 `IGraphRAGService.BuildIndexAsync` returns an in-memory `GraphRAGIndex`; the SDK `Indexer` and the

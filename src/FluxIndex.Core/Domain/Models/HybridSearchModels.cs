@@ -38,6 +38,17 @@ public record HybridSearchResult
     public int SparseRank { get; init; }
 
     /// <summary>
+    /// The graph leg's score for this row (<see cref="GraphChunkHit.Score"/>): the sum of the weights of the query's entities
+    /// and their neighbours this chunk mentions. 0 when the graph leg did not find the row or was off.
+    /// </summary>
+    public double GraphScore { get; init; }
+
+    /// <summary>
+    /// The row's 1-based rank in the graph leg; <see cref="int.MaxValue"/> when the graph leg did not find it or was off.
+    /// </summary>
+    public int GraphRank { get; init; } = int.MaxValue;
+
+    /// <summary>
     /// 최종 융합 순위
     /// </summary>
     public int FusedRank { get; init; }
@@ -74,7 +85,7 @@ public record HybridSearchResult
     /// Indicates whether this result is considered highly reliable
     /// Based on confidence threshold and source diversity
     /// </summary>
-    public bool IsHighConfidence => Confidence >= 0.7 && Source == SearchSource.Both;
+    public bool IsHighConfidence => Confidence >= 0.7 && (Source & SearchSource.Both) == SearchSource.Both;
 }
 
 /// <summary>
@@ -179,6 +190,26 @@ public record HybridSearchOptions
     /// </summary>
     public IReadOnlyDictionary<string, object> EffectiveSparseFilters =>
         SparseOptions.Filters is { Count: > 0 } ? SparseOptions.Filters : Filters;
+
+    /// <summary>
+    /// A third leg through the persisted entity graph (<see cref="Application.Interfaces.IGraphChunkRetriever"/>): chunks the
+    /// graph connects to the entities the query names, fused with the vector and keyword legs. Null (the default) leaves the
+    /// graph out and the search exactly as without it. Needs an <see cref="Application.Interfaces.IGraphChunkRetriever"/>
+    /// (registered with any graph store); asked for without one, the search throws <see cref="InvalidOperationException"/>.
+    /// </summary>
+    /// <remarks>
+    /// The graph leg widens recall, so it fuses only with methods that keep a row any leg found: RRF, WeightedSum,
+    /// RelativeScoreFusion and Maximum. Setting <see cref="FusionMethod"/> to Product or HarmonicMean (which keep only rows
+    /// both text legs found) together with this throws <see cref="ArgumentException"/>; when the service chooses the method,
+    /// it chooses RRF instead of either of them.
+    /// </remarks>
+    public GraphLegOptions? GraphOptions { get; set; }
+
+    /// <summary>
+    /// The metadata conditions that actually apply to the graph leg: its own filter when set, otherwise the query-level one.
+    /// </summary>
+    public IReadOnlyDictionary<string, object> EffectiveGraphFilters =>
+        GraphOptions?.Filters is { Count: > 0 } own ? own : Filters;
 
     /// <summary>
     /// 최소 융합 점수
@@ -335,12 +366,14 @@ public class QueryCharacteristics
 /// <param name="SparseWeight">The effective keyword-leg weight.</param>
 /// <param name="RrfK">The reciprocal-rank constant in effect (read only by <see cref="FusionMethod.RRF"/>).</param>
 /// <param name="SelectedBy">Who chose the values that were not set on the options.</param>
+/// <param name="GraphWeight">The graph leg's weight (<see cref="GraphLegOptions.Weight"/>); 0 when the graph leg was off.</param>
 public sealed record AppliedFusion(
     FusionMethod Method,
     double VectorWeight,
     double SparseWeight,
     double RrfK,
-    FusionSelection SelectedBy)
+    FusionSelection SelectedBy,
+    double GraphWeight = 0)
 {
     /// <summary>
     /// Placeholder for a result built outside a hybrid search service.
@@ -414,24 +447,28 @@ public enum FusionMethod
 }
 
 /// <summary>
-/// 검색 소스
+/// Which legs of a hybrid search found a row. A flags value: a row the vector and keyword legs both found is
+/// <see cref="Both"/>; one the graph leg also found is <c>Both | Graph</c>. Test a leg with
+/// <c>source.HasFlag(SearchSource.Vector)</c>, not with <c>==</c>, when the graph leg can be on.
 /// </summary>
+/// <remarks>The values are explicit and stable; before the graph leg (0.97.0) they were Vector = 0, Sparse = 1, Both = 2.</remarks>
+[Flags]
 public enum SearchSource
 {
-    /// <summary>
-    /// 벡터 검색만
-    /// </summary>
-    Vector,
+    /// <summary>No leg (a result built outside a hybrid search).</summary>
+    None = 0,
 
-    /// <summary>
-    /// 키워드 검색만
-    /// </summary>
-    Sparse,
+    /// <summary>The vector leg.</summary>
+    Vector = 1,
 
-    /// <summary>
-    /// 양쪽 모두
-    /// </summary>
-    Both
+    /// <summary>The keyword leg.</summary>
+    Sparse = 2,
+
+    /// <summary>The vector and keyword legs.</summary>
+    Both = Vector | Sparse,
+
+    /// <summary>The graph leg (<see cref="HybridSearchOptions.GraphOptions"/>).</summary>
+    Graph = 4,
 }
 
 /// <summary>

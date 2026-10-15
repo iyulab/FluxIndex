@@ -187,7 +187,7 @@ public class DocsSnippetCompileTests
                 StandIn("string[]", "files"), StandIn("System.IServiceProvider", "provider"),
             ])),
         // What its opening block imports, plus the logging a reader who logs already has.
-        new("docs/ADVANCED_RAG.md", 24, 0,
+        new("docs/ADVANCED_RAG.md", 25, 0,
             [
                 "FluxIndex.Core.Application.Interfaces", "FluxIndex.Core.Application.Services",
                 "FluxIndex.Core.Application.Services.Reranking", "FluxIndex.Core.Domain.Entities",
@@ -208,6 +208,7 @@ public class DocsSnippetCompileTests
                 StandIn("System.Collections.Generic.IEnumerable<FluxIndex.Core.Domain.Entities.Document>", "documents"),
                 StandIn("System.Collections.Generic.IEnumerable<FluxIndex.Core.Application.Interfaces.LeidenChunk>", "leidenChunks"),
                 StandIn("string", "documentContent"),
+                StandIn("FluxIndex.Core.Application.Interfaces.IHybridSearchService", "hybridSearch"),
                 StandIn("Microsoft.Extensions.Logging.ILogger", "_logger"),
             ])),
         // The contracts every block speaks in; the SDK's own HybridSearchOptions would collide with the core one the

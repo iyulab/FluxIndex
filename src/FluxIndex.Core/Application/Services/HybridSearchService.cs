@@ -24,6 +24,7 @@ public partial class HybridSearchService : IHybridSearchService
     private readonly IEmbeddingService _embeddingService;
     private readonly IVectorQuantizer? _quantizer;
     private readonly IDynamicFusionService? _dynamicFusion;
+    private readonly IGraphChunkRetriever? _graphRetriever;
     private readonly ILogger<HybridSearchService> _logger;
 
     /// <summary>
@@ -34,14 +35,15 @@ public partial class HybridSearchService : IHybridSearchService
         IKeywordSearchService keywordSearchService,
         IEmbeddingService embeddingService,
         ILogger<HybridSearchService> logger)
-        : this(vectorStore, keywordSearchService, embeddingService, logger, quantizer: null, dynamicFusion: null)
+        : this(vectorStore, keywordSearchService, embeddingService, logger, quantizer: null, dynamicFusion: null, graphRetriever: null)
     {
     }
 
     /// <summary>
     /// Creates the service with the optional collaborators a container provides: a <paramref name="quantizer"/> for
-    /// quantized two-stage search and a <paramref name="dynamicFusion"/> service for
-    /// <see cref="HybridSearchOptions.EnableDynamicAlphaTuning"/>. One constructor takes both, so a container resolves
+    /// quantized two-stage search, a <paramref name="dynamicFusion"/> service for
+    /// <see cref="HybridSearchOptions.EnableDynamicAlphaTuning"/> and a <paramref name="graphRetriever"/> for
+    /// <see cref="HybridSearchOptions.GraphOptions"/>. One constructor takes them all, so a container resolves
     /// whichever of them is registered; with one constructor per combination it picked the longest one it could fill
     /// and dropped Dynamic Alpha Tuning whenever no quantizer was registered.
     /// </summary>
@@ -51,13 +53,15 @@ public partial class HybridSearchService : IHybridSearchService
         IEmbeddingService embeddingService,
         ILogger<HybridSearchService> logger,
         IVectorQuantizer? quantizer = null,
-        IDynamicFusionService? dynamicFusion = null)
+        IDynamicFusionService? dynamicFusion = null,
+        IGraphChunkRetriever? graphRetriever = null)
     {
         _vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         _keywordSearchService = keywordSearchService ?? throw new ArgumentNullException(nameof(keywordSearchService));
         _embeddingService = embeddingService ?? throw new ArgumentNullException(nameof(embeddingService));
         _quantizer = quantizer;
         _dynamicFusion = dynamicFusion;
+        _graphRetriever = graphRetriever;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -95,24 +99,29 @@ public partial class HybridSearchService : IHybridSearchService
         {
             // 1. 융합 결정 — 호출자가 지정한 값은 그대로, 비운 값만 DAT 또는 쿼리 휴리스틱이 채운다
             (options, var fusion) = await ResolveFusionAsync(query, options, searchToken);
+            fusion = HybridGraphLeg.Prepare(fusion, options, _graphRetriever);
 
-            // 2. 병렬로 벡터 검색과 키워드 검색 실행
+            // 2. 병렬로 벡터 · 키워드 · (요청 시) 그래프 검색 실행
             var vectorTask = ExecuteVectorSearchAsync(query, options, searchToken);
             var sparseTask = ExecuteSparseSearchAsync(query, options, searchToken);
+            var graphTask = HybridGraphLeg.RunAsync(_graphRetriever, query, options, _logger, searchToken);
 
-            await Task.WhenAll(vectorTask, sparseTask);
+            await Task.WhenAll(vectorTask, sparseTask, graphTask);
 
             var vectorResults = await vectorTask;
             var sparseResults = await sparseTask;
+            var graphResults = await graphTask;
 
             // A leg whose backend ignored the token and failed some other way after the deadline was degraded to
             // empty by its catch-all; past the limit the answer is a timeout, not that partial result.
             searchToken.ThrowIfCancellationRequested();
 
             LogHybridSearch13(_logger, vectorResults.Count, sparseResults.Count);
+            if (options.GraphOptions is not null)
+                LogGraphLegResults(_logger, graphResults.Count);
 
             // 3. 결과 융합
-            var fusedResults = HybridFusion.Fuse(vectorResults, sparseResults, fusion, options.MaxResults, options.MinFusedScore);
+            var fusedResults = HybridFusion.Fuse(vectorResults, sparseResults, graphResults, fusion, options.MaxResults, options.MinFusedScore);
 
             stopwatch.Stop();
             LogHybridSearch12(_logger, fusedResults.Count, stopwatch.ElapsedMilliseconds);
@@ -649,6 +658,8 @@ public partial class HybridSearchService : IHybridSearchService
     private static partial void LogHybridSearch14(ILogger logger, SearchStrategyType strategy);
     [LoggerMessage(Level = LogLevel.Information, Message = "Individual searches completed - vector: {VectorCount}, keyword: {SparseCount}")]
     private static partial void LogHybridSearch13(ILogger logger, int vectorCount, int sparseCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Graph leg completed: {GraphCount} chunks")]
+    private static partial void LogGraphLegResults(ILogger logger, int graphCount);
     [LoggerMessage(Level = LogLevel.Information, Message = "Hybrid search completed: {ResultCount} results, {ElapsedMs}ms")]
     private static partial void LogHybridSearch12(ILogger logger, int resultCount, long elapsedMs);
     [LoggerMessage(Level = LogLevel.Error, Message = "Error during hybrid search: {Query}")]

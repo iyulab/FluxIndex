@@ -2,6 +2,7 @@ using System.Text;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Base;
 using FluxIndex.Core.Application.Services.KeywordSearch;
+using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.Core.Application.Services.Graph;

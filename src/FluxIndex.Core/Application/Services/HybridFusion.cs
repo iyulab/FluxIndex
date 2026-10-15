@@ -26,13 +26,100 @@ public static class HybridFusion
         AppliedFusion fusion,
         int maxResults,
         double minFusedScore)
+        => Fuse(vectorResults, sparseResults, [], fusion, maxResults, minFusedScore);
+
+    /// <summary>
+    /// Fuses the two text legs and the graph leg with <paramref name="fusion"/> and stamps it on every row. The graph leg
+    /// adds <see cref="AppliedFusion.GraphWeight"/> times its own contribution on top of the text legs' fused score: RRF
+    /// <c>1 / (k + rank)</c>, WeightedSum and Maximum its score over the leg's best, RelativeScoreFusion its min-max
+    /// normalised score (Maximum keeps the larger of the two instead of adding). A row only the graph found is kept.
+    /// </summary>
+    /// <param name="vectorResults">Vector-leg hits, best first.</param>
+    /// <param name="sparseResults">Keyword-leg hits, best first.</param>
+    /// <param name="graphResults">Graph-leg hits, best first; empty when the graph leg is off.</param>
+    /// <param name="fusion">The method, weights and RRF constant to apply.</param>
+    /// <param name="maxResults">Rows to keep after ordering.</param>
+    /// <param name="minFusedScore">Rows below this fused score are dropped.</param>
+    /// <returns>Rows ordered by fused score, ranked from 1, each carrying <paramref name="fusion"/> and a confidence
+    /// derived from how strongly the two text legs agree.</returns>
+    /// <exception cref="ArgumentException">Graph hits with <see cref="FusionMethod.Product"/> or
+    /// <see cref="FusionMethod.HarmonicMean"/>, which keep only rows both text legs found.</exception>
+    public static IReadOnlyList<HybridSearchResult> Fuse(
+        IReadOnlyList<VectorSearchResult> vectorResults,
+        IReadOnlyList<SparseSearchResult> sparseResults,
+        IReadOnlyList<GraphChunkHit> graphResults,
+        AppliedFusion fusion,
+        int maxResults,
+        double minFusedScore)
     {
         ArgumentNullException.ThrowIfNull(vectorResults);
         ArgumentNullException.ThrowIfNull(sparseResults);
+        ArgumentNullException.ThrowIfNull(graphResults);
         ArgumentNullException.ThrowIfNull(fusion);
 
-        var fused = FuseWith(vectorResults, sparseResults, fusion, maxResults, minFusedScore);
+        if (graphResults.Count > 0 && !AcceptsGraphLeg(fusion.Method))
+            throw new ArgumentException(
+                $"FusionMethod.{fusion.Method} keeps only rows both text legs found and cannot fuse a graph leg; use RRF, WeightedSum, RelativeScoreFusion or Maximum.",
+                nameof(fusion));
+
+        var rows = FuseWith(vectorResults, sparseResults, fusion);
+        if (graphResults.Count > 0)
+            rows = WithGraphLeg(rows, graphResults, fusion);
+        var fused = OrderAndLimitResults(rows, maxResults, minFusedScore);
         return WithConfidence(fused, vectorResults, sparseResults);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="method"/> can fuse a graph leg: every method that keeps a row any leg found. Product and
+    /// HarmonicMean keep only rows both text legs found, which defeats a leg added for recall.
+    /// </summary>
+    public static bool AcceptsGraphLeg(FusionMethod method) =>
+        method is not (FusionMethod.Product or FusionMethod.HarmonicMean);
+
+    private static List<HybridSearchResult> WithGraphLeg(
+        IEnumerable<HybridSearchResult> rows,
+        IReadOnlyList<GraphChunkHit> graphResults,
+        AppliedFusion fusion)
+    {
+        var byId = rows.ToDictionary(r => r.Chunk.Id, StringComparer.Ordinal);
+        var best = graphResults.Max(h => h.Score);
+        var (min, range) = Bounds(graphResults.Select(h => h.Score));
+
+        for (var i = 0; i < graphResults.Count; i++)
+        {
+            var hit = graphResults[i];
+            var contribution = fusion.GraphWeight * fusion.Method switch
+            {
+                FusionMethod.RRF => 1.0 / (fusion.RrfK + i + 1),
+                FusionMethod.WeightedSum or FusionMethod.Maximum => best > 0 ? hit.Score / best : 0.0,
+                _ => (hit.Score - min) / range,
+            };
+
+            byId[hit.Chunk.Id] = byId.TryGetValue(hit.Chunk.Id, out var existing)
+                ? existing with
+                {
+                    FusedScore = fusion.Method == FusionMethod.Maximum
+                        ? Math.Max(existing.FusedScore, contribution)
+                        : existing.FusedScore + contribution,
+                    GraphScore = hit.Score,
+                    GraphRank = i + 1,
+                    Source = existing.Source | SearchSource.Graph,
+                }
+                : new HybridSearchResult
+                {
+                    Chunk = hit.Chunk,
+                    FusedScore = contribution,
+                    VectorRank = int.MaxValue,
+                    SparseRank = int.MaxValue,
+                    GraphScore = hit.Score,
+                    GraphRank = i + 1,
+                    Fusion = fusion,
+                    Source = SearchSource.Graph,
+                    MatchedTerms = Array.Empty<string>(),
+                };
+        }
+
+        return byId.Values.ToList();
     }
 
     /// <summary>
@@ -48,13 +135,14 @@ public static class HybridFusion
 
         return rows.Select(row =>
         {
-            var vectorNormalized = row.Source is SearchSource.Vector or SearchSource.Both
+            // Confidence measures how far the two text legs agree; the graph leg does not enter it.
+            var vectorNormalized = row.Source.HasFlag(SearchSource.Vector)
                 ? (row.VectorScore - vectorMin) / vectorRange
                 : 0.0;
-            var sparseNormalized = row.Source is SearchSource.Sparse or SearchSource.Both
+            var sparseNormalized = row.Source.HasFlag(SearchSource.Sparse)
                 ? (row.SparseScore - sparseMin) / sparseRange
                 : 0.0;
-            return row with { Confidence = CalculateConfidence(vectorNormalized, sparseNormalized, row.Source) };
+            return row with { Confidence = CalculateConfidence(vectorNormalized, sparseNormalized, row.Source & SearchSource.Both) };
         }).ToList().AsReadOnly();
     }
 
@@ -68,31 +156,27 @@ public static class HybridFusion
         return (min, range == 0 ? 1.0 : range);
     }
 
-    private static ReadOnlyCollection<HybridSearchResult> FuseWith(
+    private static List<HybridSearchResult> FuseWith(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        AppliedFusion fusion,
-        int maxResults,
-        double minFusedScore)
+        AppliedFusion fusion)
     {
         return fusion.Method switch
         {
-            FusionMethod.RRF => FuseWithRRF(vectorResults, sparseResults, fusion, maxResults, minFusedScore),
-            FusionMethod.WeightedSum => FuseWithWeightedSum(vectorResults, sparseResults, fusion, maxResults, minFusedScore),
-            FusionMethod.Product => FuseWithProduct(vectorResults, sparseResults, fusion, maxResults, minFusedScore),
-            FusionMethod.Maximum => FuseWithMaximum(vectorResults, sparseResults, fusion, maxResults, minFusedScore),
-            FusionMethod.HarmonicMean => FuseWithHarmonicMean(vectorResults, sparseResults, fusion, maxResults, minFusedScore),
-            FusionMethod.RelativeScoreFusion => FuseWithRelativeScoreFusion(vectorResults, sparseResults, fusion, maxResults, minFusedScore),
-            _ => FuseWithRelativeScoreFusion(vectorResults, sparseResults, fusion, maxResults, minFusedScore) // Default to RSF for better reranking
+            FusionMethod.RRF => FuseWithRRF(vectorResults, sparseResults, fusion),
+            FusionMethod.WeightedSum => FuseWithWeightedSum(vectorResults, sparseResults, fusion),
+            FusionMethod.Product => FuseWithProduct(vectorResults, sparseResults, fusion),
+            FusionMethod.Maximum => FuseWithMaximum(vectorResults, sparseResults, fusion),
+            FusionMethod.HarmonicMean => FuseWithHarmonicMean(vectorResults, sparseResults, fusion),
+            FusionMethod.RelativeScoreFusion => FuseWithRelativeScoreFusion(vectorResults, sparseResults, fusion),
+            _ => FuseWithRelativeScoreFusion(vectorResults, sparseResults, fusion) // Default to RSF for better reranking
         };
     }
 
-    private static ReadOnlyCollection<HybridSearchResult> FuseWithRRF(
+    private static List<HybridSearchResult> FuseWithRRF(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        AppliedFusion fusion,
-        int maxResults,
-        double minFusedScore)
+        AppliedFusion fusion)
     {
         var fusedResults = new Dictionary<string, HybridSearchResult>();
         var k = fusion.RrfK;
@@ -153,23 +237,13 @@ public static class HybridFusion
             }
         }
 
-        // 최종 점수로 정렬 및 상위 결과 반환
-        var sortedResults = fusedResults.Values
-            .Where(r => r.FusedScore >= minFusedScore)
-            .OrderByDescending(r => r.FusedScore)
-            .Take(maxResults)
-            .Select((result, index) => result with { FusedRank = index + 1 })
-            .ToList();
-
-        return sortedResults.AsReadOnly();
+        return fusedResults.Values.ToList();
     }
 
-    private static ReadOnlyCollection<HybridSearchResult> FuseWithWeightedSum(
+    private static List<HybridSearchResult> FuseWithWeightedSum(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        AppliedFusion fusion,
-        int maxResults,
-        double minFusedScore)
+        AppliedFusion fusion)
     {
         var fusedResults = new Dictionary<string, HybridSearchResult>();
 
@@ -233,15 +307,13 @@ public static class HybridFusion
             }
         }
 
-        return OrderAndLimitResults(fusedResults.Values, maxResults, minFusedScore);
+        return fusedResults.Values.ToList();
     }
 
-    private static ReadOnlyCollection<HybridSearchResult> FuseWithProduct(
+    private static List<HybridSearchResult> FuseWithProduct(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        AppliedFusion fusion,
-        int maxResults,
-        double minFusedScore)
+        AppliedFusion fusion)
     {
         // 곱셈 융합은 양쪽 모두에서 매칭된 결과만 유지
         var fusedResults = new List<HybridSearchResult>();
@@ -271,15 +343,13 @@ public static class HybridFusion
             });
         }
 
-        return OrderAndLimitResults(fusedResults, maxResults, minFusedScore);
+        return fusedResults;
     }
 
-    private static ReadOnlyCollection<HybridSearchResult> FuseWithMaximum(
+    private static List<HybridSearchResult> FuseWithMaximum(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        AppliedFusion fusion,
-        int maxResults,
-        double minFusedScore)
+        AppliedFusion fusion)
     {
         var fusedResults = new Dictionary<string, HybridSearchResult>();
 
@@ -315,15 +385,13 @@ public static class HybridFusion
             };
         }
 
-        return OrderAndLimitResults(fusedResults.Values, maxResults, minFusedScore);
+        return fusedResults.Values.ToList();
     }
 
-    private static ReadOnlyCollection<HybridSearchResult> FuseWithHarmonicMean(
+    private static List<HybridSearchResult> FuseWithHarmonicMean(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        AppliedFusion fusion,
-        int maxResults,
-        double minFusedScore)
+        AppliedFusion fusion)
     {
         // 조화평균은 양쪽 모두에서 매칭된 결과만 유지
         var fusedResults = new List<HybridSearchResult>();
@@ -357,15 +425,13 @@ public static class HybridFusion
             });
         }
 
-        return OrderAndLimitResults(fusedResults, maxResults, minFusedScore);
+        return fusedResults;
     }
 
-    private static ReadOnlyCollection<HybridSearchResult> FuseWithRelativeScoreFusion(
+    private static List<HybridSearchResult> FuseWithRelativeScoreFusion(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        AppliedFusion fusion,
-        int maxResults,
-        double minFusedScore)
+        AppliedFusion fusion)
     {
         // Relative Score Fusion (RSF) preserves score magnitude information
         // by normalizing scores within each retriever before fusion
@@ -449,7 +515,7 @@ public static class HybridFusion
             }
         }
 
-        return OrderAndLimitResults(fusedResults.Values, maxResults, minFusedScore);
+        return fusedResults.Values.ToList();
     }
 
     /// <summary>

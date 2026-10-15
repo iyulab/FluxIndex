@@ -1,6 +1,7 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Graph;
 using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;

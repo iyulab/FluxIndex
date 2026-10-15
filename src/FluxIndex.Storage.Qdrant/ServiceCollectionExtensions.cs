@@ -159,8 +159,9 @@ public static class ServiceCollectionExtensions
         });
         services.TryAddSingleton<IKeywordSearchService>(sp => sp.GetRequiredService<BM25SparseRetriever>());
 
-        // Register hybrid search service
-        services.AddSingleton<IHybridSearchService, QdrantHybridSearchService>();
+        // Register hybrid search service. Scoped, like the core service: it takes the graph leg's retriever, which takes a
+        // scoped graph store on SQLite and PostgreSQL — a singleton would hold one scope's store for the process.
+        services.AddScoped<IHybridSearchService, QdrantHybridSearchService>();
 
         return services;
     }
