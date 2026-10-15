@@ -48,6 +48,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Dependencies
 - Re-pinned sibling package(s) `FluxCurator` 0.14.0 -> 0.15.0.
+- Re-pinned sibling package(s) `FluxGuard.Remote` 0.21.0 -> 0.22.0.
 
 ## [0.96.0] - 2026-10-15
 
