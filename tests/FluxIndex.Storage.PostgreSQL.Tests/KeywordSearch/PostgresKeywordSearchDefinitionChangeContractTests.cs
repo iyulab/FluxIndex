@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.KeywordSearch;
 using FluxIndex.Core.Tests.Contract;
 using FluxIndex.Storage.PostgreSQL.KeywordSearch;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -25,11 +26,11 @@ public sealed class PostgresKeywordSearchDefinitionChangeContractTests : Keyword
         await _container.StartAsync();
     }
 
-    private PostgresKeywordSearchService Open(ITextAnalyzer? analyzer, KeywordFieldOptions? fields)
+    private PostgresKeywordSearchService Open(ITextAnalyzer? analyzer, KeywordFieldOptions? fields, ILogger? logger = null)
     {
         var service = new PostgresKeywordSearchService(
             _container.GetConnectionString(),
-            NullLogger<PostgresKeywordSearchService>.Instance,
+            logger is null ? NullLogger<PostgresKeywordSearchService>.Instance : new TypedLogger<PostgresKeywordSearchService>(logger),
             analyzer,
             fields);
         _services.Add(service);
@@ -43,8 +44,8 @@ public sealed class PostgresKeywordSearchDefinitionChangeContractTests : Keyword
         return service;
     }
 
-    protected override Task<IKeywordSearchService> ReopenAsync(ITextAnalyzer analyzer, KeywordFieldOptions? fields = null)
-        => Task.FromResult<IKeywordSearchService>(Open(analyzer, fields));
+    protected override Task<IKeywordSearchService> ReopenAsync(ITextAnalyzer analyzer, KeywordFieldOptions? fields = null, ILogger? logger = null)
+        => Task.FromResult<IKeywordSearchService>(Open(analyzer, fields, logger));
 
     protected override async Task ForgetRecordedAnalyzerAsync()
     {

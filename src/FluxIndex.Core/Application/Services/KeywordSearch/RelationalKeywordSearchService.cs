@@ -530,14 +530,12 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         return (reader.GetInt64(0), reader.GetInt32(1));
     }
 
-    private static async Task<Dictionary<string, DocumentChunk>> LoadChunksAsync(
-        DbConnection connection,
-        List<string> chunkIds,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Adds one parameter per id to <paramref name="command"/> and returns the comma-separated parameter names, for an
+    /// <c>IN (…)</c> list.
+    /// </summary>
+    private static string AddChunkIdParameters(DbCommand command, List<string> chunkIds)
     {
-        var chunks = new Dictionary<string, DocumentChunk>(StringComparer.Ordinal);
-
-        await using var command = connection.CreateCommand();
         var placeholders = new List<string>(chunkIds.Count);
         for (var i = 0; i < chunkIds.Count; i++)
         {
@@ -546,9 +544,20 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             AddParameter(command, name, chunkIds[i]);
         }
 
+        return string.Join(",", placeholders);
+    }
+
+    private static async Task<Dictionary<string, DocumentChunk>> LoadChunksAsync(
+        DbConnection connection,
+        List<string> chunkIds,
+        CancellationToken cancellationToken)
+    {
+        var chunks = new Dictionary<string, DocumentChunk>(StringComparer.Ordinal);
+
+        await using var command = connection.CreateCommand();
         command.CommandText =
             "SELECT chunk_id, document_id, chunk_index, content, token_count, metadata " +
-            $"FROM bm25_chunks WHERE chunk_id IN ({string.Join(",", placeholders)})";
+            $"FROM bm25_chunks WHERE chunk_id IN ({AddChunkIdParameters(command, chunkIds)})";
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -1114,16 +1123,14 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
         await WriteFilterableMetadataAsync(connection, chunk, cancellationToken).ConfigureAwait(false);
 
-        var termFrequencies = terms
-            .GroupBy(t => t, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        var termFrequencies = PostingFrequencies(terms);
 
         foreach (var (term, frequency) in termFrequencies)
         {
             // The row was already acquired, in the batch's sorted order, before any chunk was
             // written. Upserting it here instead is what let two transactions take the same rows in
             // opposite orders.
-            var termId = termIds[NormalizeTerm(term)];
+            var termId = termIds[term];
 
             affectedTermIds.Add(termId);
             frequencies.Written(termId, chunk.Id);
@@ -1139,15 +1146,13 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
         foreach (var (field, fieldTermList) in fieldTerms)
         {
-            var fieldFrequencies = fieldTermList
-                .GroupBy(t => t, StringComparer.Ordinal)
-                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+            var fieldFrequencies = PostingFrequencies(fieldTermList);
             if (fieldFrequencies.Count > 0)
                 statistics.AddField(field, fieldTermList.Count);
 
             foreach (var (term, frequency) in fieldFrequencies)
             {
-                var termId = termIds[NormalizeTerm(term)];
+                var termId = termIds[term];
                 affectedTermIds.Add(termId);
                 frequencies.Written(termId, chunk.Id);
 
@@ -1867,9 +1872,11 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// </summary>
     /// <remarks>
     /// A non-empty store that records no analyzer was written by a release that did not record one, under whatever
-    /// analyzer the host registered then - and the default analyzer has changed since. Nothing says which it was, so
-    /// it is rebuilt once. A store that records no field set is recounted (the field postings are rebuilt with the
-    /// analyzer when that runs).
+    /// analyzer the host registered then - and the default analyzer has changed since. Nothing says which it was, so an
+    /// evenly spaced sample of its chunks is re-analyzed and compared with the stored postings
+    /// (<see cref="CompareSampleWithDefinitionAsync"/>): when every sampled chunk holds exactly the terms the configured
+    /// analyzer and fields produce, the analyzer is recorded as it stands; otherwise the store is rebuilt once. A store
+    /// that records no field set is recounted, and its missing field postings fail the sample, so they are rebuilt too.
     /// </remarks>
     private async Task<string?> DescribeIndexDefinitionChangeAsync(CancellationToken cancellationToken)
     {
@@ -1879,7 +1886,11 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         var analyzers = await ReadStatisticKeysAsync(connection, AnalyzerKeyPrefix, cancellationToken).ConfigureAwait(false);
         if (analyzers.Count == 0)
         {
-            changes.Add($"analyzer not recorded -> {Analyzer.Identity}");
+            var sample = await CompareSampleWithDefinitionAsync(connection, cancellationToken).ConfigureAwait(false);
+            if (sample.DifferingChunkId is { } differing)
+                changes.Add($"analyzer not recorded, sampled chunk {differing} differs -> {Analyzer.Identity}");
+            else if (sample.Compared > 0)
+                LogAnalyzerAdoptedWithoutRebuild(Logger, BackendName, sample.Compared, Analyzer.Identity);
         }
         else if (!(analyzers.Count == 1 && string.Equals(analyzers[0], _analyzerKey, StringComparison.Ordinal)))
         {
@@ -1899,6 +1910,164 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         // Nothing to rebuild in an empty index: the next writes are analyzed with the current definition.
         return await CountChunksAsync(connection, cancellationToken).ConfigureAwait(false) == 0 ? null : string.Join("; ", changes);
     }
+
+    /// <summary>Most stored chunks <see cref="CompareSampleWithDefinitionAsync"/> re-analyzes.</summary>
+    /// <remarks>
+    /// Large enough that a store a small share of whose chunks were written under another analyzer is caught - one
+    /// chunk in a hundred escapes a sample of this size with a probability near 3 in 100,000 - and small enough to cost
+    /// a second against a store a full rebuild would take an hour over.
+    /// </remarks>
+    private const int DefinitionSampleSize = 1024;
+
+    /// <summary>
+    /// Re-analyzes an evenly spaced sample of the stored chunks (every chunk when there are at most
+    /// <see cref="DefinitionSampleSize"/>) with the configured analyzer and fields, and compares the result with their
+    /// stored postings: each body term with its frequency and the chunk's length, and each configured field's term with
+    /// its frequency and lengths. Returns how many chunks were compared, or the first chunk whose postings differ.
+    /// </summary>
+    /// <remarks>
+    /// Reads only: a store that matches keeps its rows, and the caller records the analyzer. Rows of a field that is no
+    /// longer configured are not compared - the query never reads them.
+    /// </remarks>
+    private async Task<(int Compared, string? DifferingChunkId)> CompareSampleWithDefinitionAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var total = await CountChunksAsync(connection, cancellationToken).ConfigureAwait(false);
+        if (total == 0)
+            return (0, null);
+
+        var stride = (total + DefinitionSampleSize - 1) / DefinitionSampleSize;
+        var sample = await ReadChunkIdSampleAsync(connection, stride, cancellationToken).ConfigureAwait(false);
+
+        var compared = 0;
+        foreach (var batch in sample.Chunk(RebuildBatchSize))
+        {
+            var ids = batch.ToList();
+            var chunks = await LoadChunksAsync(connection, ids, cancellationToken).ConfigureAwait(false);
+            var stored = await ReadPostingKeysAsync(connection, ids, cancellationToken).ConfigureAwait(false);
+            foreach (var id in ids)
+            {
+                // Deleted between the two reads: there is nothing left to compare.
+                if (!chunks.TryGetValue(id, out var chunk))
+                    continue;
+
+                var held = stored.TryGetValue(id, out var keys) ? keys : [];
+                if (!ExpectedPostingKeys(chunk).SetEquals(held))
+                    return (compared, id);
+                compared++;
+            }
+        }
+
+        return (compared, null);
+    }
+
+    /// <summary>Every <paramref name="stride"/>-th chunk id in chunk-id order, starting with the first.</summary>
+    private static async Task<List<string>> ReadChunkIdSampleAsync(DbConnection connection, long stride, CancellationToken cancellationToken)
+    {
+        var ids = new List<string>(DefinitionSampleSize);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT chunk_id FROM (
+                SELECT chunk_id, ROW_NUMBER() OVER (ORDER BY chunk_id) AS position FROM bm25_chunks) AS ordered
+            WHERE (position - 1) % @stride = 0
+            ORDER BY chunk_id
+            LIMIT @size
+            """;
+        AddParameter(command, "@stride", stride);
+        AddParameter(command, "@size", DefinitionSampleSize);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            ids.Add(reader.GetString(0));
+        return ids;
+    }
+
+    /// <summary>
+    /// The postings <paramref name="chunk"/> would be written with under the configured analyzer and fields, in the form
+    /// <see cref="ReadPostingKeysAsync"/> reads them back. Empty when its body analyzes to no terms: such a chunk is
+    /// not stored at all.
+    /// </summary>
+    private HashSet<string> ExpectedPostingKeys(DocumentChunk chunk)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var terms = Tokenize(chunk.Content).ToList();
+        if (terms.Count == 0)
+            return keys;
+
+        foreach (var (term, frequency) in PostingFrequencies(terms))
+            keys.Add(BodyPostingKey(term, frequency, terms.Count));
+
+        foreach (var (field, fieldTerms) in TokenizeFields(chunk))
+        {
+            foreach (var (term, frequency) in PostingFrequencies(fieldTerms))
+                keys.Add(FieldPostingKey(field, term, frequency, fieldTerms.Count, terms.Count));
+        }
+
+        return keys;
+    }
+
+    /// <summary>
+    /// The stored body postings and configured-field postings of <paramref name="chunkIds"/>, by chunk id, as the keys
+    /// <see cref="ExpectedPostingKeys"/> builds.
+    /// </summary>
+    private async Task<Dictionary<string, HashSet<string>>> ReadPostingKeysAsync(
+        DbConnection connection,
+        List<string> chunkIds,
+        CancellationToken cancellationToken)
+    {
+        var keys = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        HashSet<string> For(string chunkId)
+        {
+            if (!keys.TryGetValue(chunkId, out var set))
+                keys[chunkId] = set = new HashSet<string>(StringComparer.Ordinal);
+            return set;
+        }
+
+        await using (var bodyCmd = connection.CreateCommand())
+        {
+            bodyCmd.CommandText =
+                "SELECT p.chunk_id, t.term, p.term_frequency, p.document_length "
+                + "FROM bm25_postings p JOIN bm25_terms t ON t.id = p.term_id "
+                + $"WHERE p.chunk_id IN ({AddChunkIdParameters(bodyCmd, chunkIds)})";
+            await using var reader = await bodyCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                For(reader.GetString(0)).Add(BodyPostingKey(
+                    reader.GetString(1),
+                    Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture),
+                    Convert.ToInt64(reader.GetValue(3), CultureInfo.InvariantCulture)));
+            }
+        }
+
+        if (Fields.Fields.Count == 0)
+            return keys;
+
+        await using (var fieldCmd = connection.CreateCommand())
+        {
+            fieldCmd.CommandText =
+                "SELECT f.chunk_id, f.field, t.term, f.term_frequency, f.field_length, f.document_length "
+                + "FROM bm25_field_postings f JOIN bm25_terms t ON t.id = f.term_id "
+                + $"WHERE f.chunk_id IN ({AddChunkIdParameters(fieldCmd, chunkIds)}) AND {BuildFieldPredicate(fieldCmd, "f.field")}";
+            await using var reader = await fieldCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                For(reader.GetString(0)).Add(FieldPostingKey(
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    Convert.ToInt64(reader.GetValue(3), CultureInfo.InvariantCulture),
+                    Convert.ToInt64(reader.GetValue(4), CultureInfo.InvariantCulture),
+                    Convert.ToInt64(reader.GetValue(5), CultureInfo.InvariantCulture)));
+            }
+        }
+
+        return keys;
+    }
+
+    private static string BodyPostingKey(string term, long frequency, long documentLength)
+        => string.Create(CultureInfo.InvariantCulture, $"body\u0001{term}\u0001{frequency}\u0001{documentLength}");
+
+    private static string FieldPostingKey(string field, string term, long frequency, long fieldLength, long documentLength)
+        => string.Create(CultureInfo.InvariantCulture, $"field\u0001{field}\u0001{term}\u0001{frequency}\u0001{fieldLength}\u0001{documentLength}");
 
     /// <summary>
     /// Re-tokenizes every stored chunk with the configured analyzer and field set, through the same write path as
@@ -2313,6 +2482,23 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// </summary>
     private static string NormalizeTerm(string term) => term.ToLowerInvariant();
 
+    /// <summary>
+    /// How often each normalized term occurs in <paramref name="terms"/>: one posting per term row. Spellings that
+    /// normalize to the same term count together - an analyzer that keeps case emits «Index» and «index» as two tokens
+    /// of one term.
+    /// </summary>
+    private static Dictionary<string, int> PostingFrequencies(IEnumerable<string> terms)
+    {
+        var frequencies = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var term in terms)
+        {
+            var normalized = NormalizeTerm(term);
+            frequencies[normalized] = frequencies.GetValueOrDefault(normalized) + 1;
+        }
+
+        return frequencies;
+    }
+
     #endregion
 
     #region Helpers
@@ -2636,6 +2822,11 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index ({Backend}) re-tokenized {ChunkCount} chunks with analyzer {Analyzer}")]
     private static partial void LogRebuildCompleted(ILogger logger, string backend, int chunkCount, string analyzer);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Keyword index ({Backend}) recorded no analyzer; {ChunkCount} sampled chunks hold exactly the terms {Analyzer} produces, so it is recorded without re-tokenizing")]
+    private static partial void LogAnalyzerAdoptedWithoutRebuild(ILogger logger, string backend, int chunkCount, string analyzer);
 
     #endregion
 }

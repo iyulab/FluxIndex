@@ -5,6 +5,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **A keyword index written before 0.93.0 under the analyzer you still register is no longer re-tokenized on first
+  open.** Such an index records no analyzer; the first open now re-analyzes an evenly spaced sample of up to 1,024 stored
+  chunks and compares the result with their stored body and field postings. When every sampled chunk matches, the
+  analyzer is recorded as it stands (one information line, no rewrite); when one differs, the index is re-tokenized
+  once as before, and the warning names the differing chunk.
+- **Spellings an analyzer emits in different case now count as one term.** A custom analyzer that keeps case (`Index`,
+  `index`) wrote one posting whose frequency was the last spelling's count instead of their sum; the frequency is now
+  the sum, so BM25 ranks such a chunk as it ranks the lower-cased text.
+
 ## [0.95.0] - 2026-10-15
 
 ### Added

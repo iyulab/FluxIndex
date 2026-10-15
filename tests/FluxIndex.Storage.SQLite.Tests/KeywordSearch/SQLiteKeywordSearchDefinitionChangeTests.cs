@@ -4,6 +4,7 @@ using FluxIndex.Core.Application.Services.KeywordSearch;
 using FluxIndex.Core.Tests.Contract;
 using FluxIndex.Storage.SQLite.KeywordSearch;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
@@ -27,9 +28,9 @@ public sealed class SQLiteKeywordSearchDefinitionChangeTests : KeywordSearchDefi
         return path;
     }
 
-    private SQLiteKeywordSearchService Create(string path, ITextAnalyzer? analyzer, KeywordFieldOptions? fields)
+    private SQLiteKeywordSearchService Create(string path, ITextAnalyzer? analyzer, KeywordFieldOptions? fields, ILogger? logger = null)
     {
-        var service = new SQLiteKeywordSearchService($"Data Source={path}", NullLogger<SQLiteKeywordSearchService>.Instance, analyzer, fields);
+        var service = new SQLiteKeywordSearchService($"Data Source={path}", logger is null ? NullLogger<SQLiteKeywordSearchService>.Instance : new TypedLogger<SQLiteKeywordSearchService>(logger), analyzer, fields);
         _services.Add(service);
         return service;
     }
@@ -37,8 +38,8 @@ public sealed class SQLiteKeywordSearchDefinitionChangeTests : KeywordSearchDefi
     protected override Task<IKeywordSearchService> CreateServiceAsync(ITextAnalyzer? analyzer, KeywordFieldOptions? fields = null)
         => Task.FromResult<IKeywordSearchService>(Create(NewPath(), analyzer, fields));
 
-    protected override Task<IKeywordSearchService> ReopenAsync(ITextAnalyzer analyzer, KeywordFieldOptions? fields = null)
-        => Task.FromResult<IKeywordSearchService>(Create(_paths[^1], analyzer, fields));
+    protected override Task<IKeywordSearchService> ReopenAsync(ITextAnalyzer analyzer, KeywordFieldOptions? fields = null, ILogger? logger = null)
+        => Task.FromResult<IKeywordSearchService>(Create(_paths[^1], analyzer, fields, logger));
 
     protected override async Task ForgetRecordedAnalyzerAsync()
     {
