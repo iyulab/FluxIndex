@@ -179,6 +179,9 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
     /// </summary>
     protected override string? TermRowLockClause => "FOR NO KEY UPDATE";
 
+    /// <inheritdoc />
+    protected override string? ExclusiveRowLockClause => "FOR UPDATE";
+
     /// <summary>
     /// A zero-frequency row another writer holds is one that writer is giving a posting; it is skipped rather than
     /// waited for (and would be kept anyway).

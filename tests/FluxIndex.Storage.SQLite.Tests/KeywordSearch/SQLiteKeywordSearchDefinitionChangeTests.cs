@@ -50,6 +50,19 @@ public sealed class SQLiteKeywordSearchDefinitionChangeTests : KeywordSearchDefi
         await command.ExecuteNonQueryAsync();
     }
 
+    protected override async Task WriteStatisticAsync(string key)
+    {
+        await using var connection = new SqliteConnection($"Data Source={_paths[^1]}");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO bm25_statistics (key, value) VALUES (@key, 1)";
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "@key";
+        parameter.Value = key;
+        command.Parameters.Add(parameter);
+        await command.ExecuteNonQueryAsync();
+    }
+
     [Fact]
     public void AnAnalyzerWithoutIdentity_IsRefused()
     {

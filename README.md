@@ -437,14 +437,25 @@ services.AddSingleton<ITextAnalyzer>(WordTextAnalyzer.Instance);   // before Add
 ```
 
 The index records the analyzer's `Identity` (`fluxindex.cjk-bigram/1`, `fluxindex.word/1`). Opened
-with an analyzer of another identity it re-tokenizes its stored chunks from their stored text
-before first use (a warning names the change; it costs about as long as indexing the keyword leg,
-and nothing is re-embedded), so switching needs no manual re-index. An index written before 0.93.0
-records no analyzer: on its first open a sample of up to 1,024 chunks is re-analyzed and compared
-with the stored terms, and if they match the analyzer is recorded without re-tokenizing (an
-information line says so); if any sampled chunk differs, the index is re-tokenized once. A custom
-`ITextAnalyzer` names itself through `Identity`: change
-the name whenever the same text would produce different terms.
+with an analyzer of another identity it re-tokenizes its stored chunks from their stored text (a
+warning names the change; nothing is re-embedded), so switching needs no manual re-index. An index
+written before 0.93.0 records no analyzer: on its first open a sample of up to 1,024 chunks is
+re-analyzed and compared with the stored terms, and if they match the analyzer is recorded without
+re-tokenizing (an information line says so); if any sampled chunk differs, the index is re-tokenized.
+
+The re-tokenization runs in the background (since 0.96.0): opening returns once the schema is ready,
+and searches and writes meanwhile run against the index as it stands, so keyword recall is partial
+until it completes. It works a batch per transaction and records its progress in the index, so a
+host stopped part-way continues on its next open instead of starting over. `IKeywordSearchService`
+reports it and lets a host wait:
+
+- `GetStatisticsAsync()` → `Rebuild`: null when none runs; otherwise `Change`, `Completed` / `Total`
+  chunks and `Status` (`Running`, `Interrupted` by disposal, `Failed`).
+- `WaitForMaintenanceAsync()` completes when it has finished (throws if it failed) — await it before
+  serving when partial keyword recall is not acceptable, for example in a readiness check.
+
+A custom `ITextAnalyzer` names itself through `Identity`: change the name whenever the same text
+would produce different terms.
 The in-memory `BM25SparseRetriever` fallback and the sqlite-vec store's native FTS5 leg have their
 own tokenization and are not affected.
 

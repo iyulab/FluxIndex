@@ -204,6 +204,17 @@ public interface IKeywordSearchService
     Task<KeywordIndexStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Completes when the maintenance the index started on opening has finished. For a relational index that is the
+    /// re-tokenization of its stored chunks after it was opened under a different analyzer or field set
+    /// (<see cref="KeywordIndexStatistics.Rebuild"/>), which runs in the background so that opening does not wait for it.
+    /// Searches and writes meanwhile run against the index as it stands, so keyword recall is partial until it ends; a
+    /// host that must not serve partial recall awaits this before serving. Completes at once when nothing is running.
+    /// </summary>
+    /// <param name="cancellationToken">Stops the wait, not the maintenance.</param>
+    /// <exception cref="InvalidOperationException">The maintenance failed. The next open of the index retries it.</exception>
+    Task WaitForMaintenanceAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
     /// Optimizes the keyword index for better search performance.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -391,4 +402,50 @@ public record KeywordIndexStatistics
     /// Most frequent terms in the index.
     /// </summary>
     public Dictionary<string, long> TopFrequentTerms { get; init; } = [];
+
+    /// <summary>
+    /// The re-tokenization of stored chunks this index started on opening under a different analyzer or field set, while
+    /// it runs or after it stopped part-way; null when there is none. See
+    /// <see cref="IKeywordSearchService.WaitForMaintenanceAsync"/>.
+    /// </summary>
+    public KeywordIndexRebuild? Rebuild { get; init; }
+}
+
+/// <summary>
+/// A keyword index re-tokenizing its stored chunks because it was opened under a different analyzer or field set. The
+/// rebuild runs in the background, a batch per transaction, and records its progress in the index: a restart under the
+/// same definition continues after the last committed batch.
+/// </summary>
+public sealed record KeywordIndexRebuild
+{
+    /// <summary>What changed, as the warning logged at the start names it.</summary>
+    public required string Change { get; init; }
+
+    /// <summary>Stored chunks re-tokenized so far, by whichever process did them.</summary>
+    public long Completed { get; init; }
+
+    /// <summary>Stored chunks in the index.</summary>
+    public long Total { get; init; }
+
+    /// <summary>When this process started, or resumed, the rebuild.</summary>
+    public DateTimeOffset StartedAt { get; init; }
+
+    /// <summary>Whether it is running, or why it stopped before finishing.</summary>
+    public KeywordIndexRebuildStatus Status { get; init; }
+
+    /// <summary>The failure, when <see cref="Status"/> is <see cref="KeywordIndexRebuildStatus.Failed"/>.</summary>
+    public string? Error { get; init; }
+}
+
+/// <summary>Where a <see cref="KeywordIndexRebuild"/> stands.</summary>
+public enum KeywordIndexRebuildStatus
+{
+    /// <summary>Re-tokenizing; searches see the index as it stands.</summary>
+    Running = 1,
+
+    /// <summary>Stopped because the service was disposed; the next open continues it.</summary>
+    Interrupted = 2,
+
+    /// <summary>Stopped by an error; the next open retries it.</summary>
+    Failed = 3,
 }

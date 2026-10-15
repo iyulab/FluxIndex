@@ -7,7 +7,24 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Added
+- **A keyword index rebuild can be watched and waited for.** `KeywordIndexStatistics.Rebuild` (from
+  `GetStatisticsAsync()`) reports the re-tokenization an index started on opening under a different analyzer or field
+  set — `Change`, `Completed` / `Total` chunks, `Status` (`Running`, `Interrupted`, `Failed`) — and
+  `IKeywordSearchService.WaitForMaintenanceAsync()` completes when it has finished (default implementation: completes at
+  once, so other implementations keep compiling).
+- **An interrupted rebuild continues where it stopped.** Each batch commits a cursor with its rows; a host stopped
+  part-way (deploy, restart, health-check kill) continues after the last committed batch on its next open. A cursor
+  recorded toward a different analyzer or field set is dropped. Processes sharing one PostgreSQL index take turns batch
+  by batch instead of each rewriting it.
+
 ### Changed
+- **Breaking**: opening a relational keyword index no longer waits for the rebuild a changed analyzer or field set
+  needs. `EnsureSchemaAsync` and the first keyword call return once the schema is ready; the rebuild runs in the
+  background, and searches meanwhile see the index as it stands (partial keyword recall until it completes). Writes
+  are not blocked. A rebuild batch reads its chunks after locking them, so a chunk rewritten or deleted during the
+  rebuild ends as the writer left it. Migration: if your host must not serve partial keyword recall, await
+  `WaitForMaintenanceAsync()` on the keyword service before serving.
 - **Keyword-index writes cost a few statements per batch instead of one per posting.** Indexing, re-indexing, document
   replacement and the definition rebuild now delete a batch's postings in one statement per relation and write its
   chunks, postings, field postings and filter rows as set inserts (PostgreSQL: one `unnest` insert per relation;

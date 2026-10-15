@@ -30,6 +30,15 @@ public abstract class KeywordSearchDefinitionChangeContractSuite
     /// </summary>
     protected abstract Task ForgetRecordedAnalyzerAsync();
 
+    /// <summary>
+    /// Writes a row (value 1) of the last store's statistics relation under <paramref name="key"/>, as a host stopped
+    /// part-way through a rebuild would have left it.
+    /// </summary>
+    protected abstract Task WriteStatisticAsync(string key);
+
+    /// <summary>The rebuild marker key for an analyzer under the default field set.</summary>
+    private static string RebuildTarget(string analyzerIdentity) => $"rebuild_target:{analyzerIdentity}|file_name,title";
+
     private static DocumentChunk Chunk(string id, string content, params (string Key, object Value)[] metadata)
     {
         var chunk = DocumentChunk.Create($"doc-{id}", content, 0, 1);
@@ -58,7 +67,9 @@ public abstract class KeywordSearchDefinitionChangeContractSuite
         // The default analyzer keeps «개인정보» whole, so «정보» (inside the word, not its prefix) matches nothing.
         Assert.Empty(await RankAsync(built, "정보", ct));
 
-        var reopened = await RankAsync(await ReopenAsync(CjkBigramTextAnalyzer.Instance), "정보 규정", ct);
+        var service = await ReopenAsync(CjkBigramTextAnalyzer.Instance);
+        await service.WaitForMaintenanceAsync(ct);
+        var reopened = await RankAsync(service, "정보 규정", ct);
 
         var fresh = await CreateServiceAsync(CjkBigramTextAnalyzer.Instance);
         await fresh.IndexChunksAsync(KoreanCorpus(), ct);
@@ -91,7 +102,7 @@ public abstract class KeywordSearchDefinitionChangeContractSuite
         await built.IndexChunksAsync(KoreanCorpus(), ct);
 
         var analyzer = new RecordingAnalyzer(WordTextAnalyzer.Instance, "custom/2");
-        await (await ReopenAsync(analyzer)).SearchAsync("회의록은", cancellationToken: ct);
+        await (await ReopenAsync(analyzer)).WaitForMaintenanceAsync(ct);
 
         foreach (var chunk in KoreanCorpus())
             Assert.Contains(chunk.Content, analyzer.Inputs);
@@ -108,6 +119,7 @@ public abstract class KeywordSearchDefinitionChangeContractSuite
         await ForgetRecordedAnalyzerAsync();
 
         var upgraded = await ReopenAsync(CjkBigramTextAnalyzer.Instance);
+        await upgraded.WaitForMaintenanceAsync(ct);
         Assert.Equal(["1"], (await RankAsync(upgraded, "정보", ct)).Select(r => r.Id));
 
         // Recorded now: the next open with the same analyzer analyzes only the query.
@@ -154,6 +166,7 @@ public abstract class KeywordSearchDefinitionChangeContractSuite
 
         var log = new ListLogger();
         var reopened = await ReopenAsync(CjkBigramTextAnalyzer.Instance, logger: log);
+        await reopened.WaitForMaintenanceAsync(ct);
 
         Assert.Equal(["1"], (await RankAsync(reopened, "정보", ct)).Select(r => r.Id));
         Assert.Contains(log.Messages, m => m.Level == LogLevel.Warning && m.Text.Contains("sampled chunk 1 differs", StringComparison.Ordinal));
@@ -178,6 +191,127 @@ public abstract class KeywordSearchDefinitionChangeContractSuite
     }
 
     [Fact]
+    public async Task Opening_StartsTheRebuildInTheBackground_AndReportsItsProgress()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var corpus = KoreanCorpus();
+        var built = await CreateServiceAsync(WordTextAnalyzer.Instance);
+        await built.IndexChunksAsync(corpus, ct);
+
+        // The rebuild is held inside its first batch; opening and searching must not wait for it.
+        var gate = new GatedAnalyzer(CjkBigramTextAnalyzer.Instance, blockOn: corpus[0].Content);
+        try
+        {
+            var reopened = await ReopenAsync(gate);
+            await reopened.GetStatisticsAsync(ct);
+            await gate.Reached.WaitAsync(TimeSpan.FromSeconds(30), ct);
+
+            var running = (await reopened.GetStatisticsAsync(ct)).Rebuild;
+            Assert.NotNull(running);
+            Assert.Equal(KeywordIndexRebuildStatus.Running, running.Status);
+            Assert.Equal(3, running.Total);
+            Assert.Equal(0, running.Completed);
+            Assert.Contains("fluxindex.word/1", running.Change, StringComparison.Ordinal);
+
+            // Searches run meanwhile, against the index as it stands: still whole words, so «정보» matches nothing.
+            Assert.Empty(await RankAsync(reopened, "정보", ct));
+
+            gate.Release();
+            await reopened.WaitForMaintenanceAsync(ct);
+
+            Assert.Null((await reopened.GetStatisticsAsync(ct)).Rebuild);
+            Assert.Equal(["1"], (await RankAsync(reopened, "정보", ct)).Select(r => r.Id));
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    [Fact]
+    public async Task AnInterruptedRebuild_ContinuesAfterItsLastCommittedBatch()
+    {
+        // A host stopped part-way through rebuilding toward bigrams: its last committed batch ended at chunk 1.
+        var ct = TestContext.Current.CancellationToken;
+        var corpus = KoreanCorpus();
+        var built = await CreateServiceAsync(WordTextAnalyzer.Instance);
+        await built.IndexChunksAsync(corpus, ct);
+        await ForgetRecordedAnalyzerAsync();
+        await WriteStatisticAsync(RebuildTarget(CjkBigramTextAnalyzer.Instance.Identity));
+        await WriteStatisticAsync("rebuild_after:1");
+
+        var analyzer = new RecordingAnalyzer(CjkBigramTextAnalyzer.Instance);
+        await (await ReopenAsync(analyzer)).WaitForMaintenanceAsync(ct);
+
+        Assert.DoesNotContain(corpus[0].Content, analyzer.Inputs);
+        Assert.Contains(corpus[1].Content, analyzer.Inputs);
+        Assert.Contains(corpus[2].Content, analyzer.Inputs);
+
+        // Finished and recorded: the next open analyzes only the query.
+        var next = new RecordingAnalyzer(CjkBigramTextAnalyzer.Instance);
+        await (await ReopenAsync(next)).SearchAsync("규정", cancellationToken: ct);
+        Assert.Equal(["규정"], next.Inputs);
+    }
+
+    [Fact]
+    public async Task ARebuildRecordedTowardAnotherDefinition_IsDropped_AndTheStoreJudgedAfresh()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var corpus = KoreanCorpus();
+        var built = await CreateServiceAsync(WordTextAnalyzer.Instance);
+        await built.IndexChunksAsync(corpus, ct);
+        await ForgetRecordedAnalyzerAsync();
+        await WriteStatisticAsync(RebuildTarget("other/1"));
+        await WriteStatisticAsync("rebuild_after:1");
+
+        var analyzer = new RecordingAnalyzer(CjkBigramTextAnalyzer.Instance);
+        var reopened = await ReopenAsync(analyzer);
+        await reopened.WaitForMaintenanceAsync(ct);
+
+        // From the first chunk, not after the other definition's cursor.
+        Assert.Contains(corpus[0].Content, analyzer.Inputs);
+        Assert.Equal(["1"], (await RankAsync(reopened, "정보", ct)).Select(r => r.Id));
+    }
+
+    [Fact]
+    public async Task AChunkRewrittenOrDeletedDuringTheRebuild_EndsAsTheWriterLeftIt()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var corpus = KoreanCorpus();
+        var built = await CreateServiceAsync(WordTextAnalyzer.Instance);
+        await built.IndexChunksAsync(corpus, ct);
+
+        var gate = new GatedAnalyzer(CjkBigramTextAnalyzer.Instance, blockOn: corpus[0].Content);
+        try
+        {
+            var rebuilding = await ReopenAsync(gate);
+            await rebuilding.GetStatisticsAsync(ct);
+            await gate.Reached.WaitAsync(TimeSpan.FromSeconds(30), ct);
+
+            // Another instance of the host writes while the rebuild holds the batch those chunks are in.
+            var writer = await ReopenAsync(CjkBigramTextAnalyzer.Instance);
+            // On threads of their own: a driver whose async calls run synchronously would otherwise hold this one in its busy wait.
+            var rewrite = Task.Run(() => writer.IndexChunksAsync([Chunk("2", "새로운 공지로 교체한다", ("title", "인사 규정"))], ct), ct);
+            var delete = Task.Run(() => writer.DeleteChunkAsync("3", ct), ct);
+            await Task.Delay(300, ct);
+
+            gate.Release();
+            await Task.WhenAll(rewrite, delete);
+            await rebuilding.WaitForMaintenanceAsync(ct);
+            await writer.WaitForMaintenanceAsync(ct);
+
+            Assert.Equal(["2"], (await RankAsync(writer, "공지", ct)).Select(r => r.Id));
+            Assert.Empty(await RankAsync(writer, "징계", ct));
+            Assert.Empty(await RankAsync(writer, "회의록", ct));
+            Assert.Equal(["1"], (await RankAsync(writer, "정보", ct)).Select(r => r.Id));
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    [Fact]
     public async Task WithNoAnalyzerRegistered_TheIndexUsesCjkBigrams()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -197,6 +331,7 @@ public abstract class KeywordSearchDefinitionChangeContractSuite
         Assert.Empty(await RankAsync(built, "지침", ct));
 
         var reopened = await ReopenAsync(CjkBigramTextAnalyzer.Instance, new KeywordFieldOptions());
+        await reopened.WaitForMaintenanceAsync(ct);
 
         Assert.Equal(["1"], (await RankAsync(reopened, "지침", ct)).Select(r => r.Id));
     }
@@ -210,12 +345,41 @@ public abstract class KeywordSearchDefinitionChangeContractSuite
             [Chunk("a", "보안규정을 지킨다", ("team", "legal")), Chunk("b", "보안규정에 따른다", ("team", "ops"))], ct);
 
         var reopened = await ReopenAsync(CjkBigramTextAnalyzer.Instance);
+        await reopened.WaitForMaintenanceAsync(ct);
         var hits = await reopened.SearchAsync(
             "규정",
             new KeywordSearchOptions { MetadataFilter = new Dictionary<string, object> { ["team"] = "ops" } },
             ct);
 
         Assert.Equal(["b"], hits.Select(h => h.Chunk.Id));
+    }
+
+    /// <summary>
+    /// Delegates to another analyzer, and holds the first call that analyzes <paramref name="blockOn"/> until released -
+    /// a rebuild caught inside its batch.
+    /// </summary>
+    private sealed class GatedAnalyzer(ITextAnalyzer inner, string blockOn) : ITextAnalyzer
+    {
+        private readonly ManualResetEventSlim _open = new(false);
+        private readonly TaskCompletionSource _reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>Completes when the held text is being analyzed.</summary>
+        public Task Reached => _reached.Task;
+
+        public string Identity => inner.Identity;
+
+        public void Release() => _open.Set();
+
+        public IEnumerable<string> Tokenize(string text)
+        {
+            if (string.Equals(text, blockOn, StringComparison.Ordinal))
+            {
+                _reached.TrySetResult();
+                _open.Wait(TimeSpan.FromSeconds(60));
+            }
+
+            return inner.Tokenize(text).ToList();
+        }
     }
 
     /// <summary>Splits on spaces, keeping case unless told otherwise.</summary>

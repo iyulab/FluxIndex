@@ -27,6 +27,18 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     private bool _initialized;
     private bool _disposed;
 
+    /// <summary>Stops the background rebuild when the service is disposed; never a caller's token.</summary>
+    private readonly CancellationTokenSource _maintenanceCancellation = new();
+
+    /// <summary>The background rebuild started on opening, or a completed task.</summary>
+    private Task _maintenance = Task.CompletedTask;
+
+    /// <summary>The rebuild while it runs or after it stopped part-way; null when there is none.</summary>
+    private KeywordIndexRebuild? _rebuild;
+
+    /// <summary>What stopped the rebuild, when it failed.</summary>
+    private Exception? _rebuildFailure;
+
     /// <summary>Logger used for the shared index operations.</summary>
     protected ILogger Logger { get; }
 
@@ -65,6 +77,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         _configuredFields = new HashSet<string>(Fields.Fields.Select(f => f.MetadataKey), StringComparer.Ordinal);
         _documentFrequencyFieldsKey = DocumentFrequencyFieldsKeyPrefix
             + JsonSerializer.Serialize(_configuredFields.Order(StringComparer.Ordinal).ToArray());
+        _rebuildTargetKey = RebuildTargetKeyPrefix + Analyzer.Identity + "|"
+            + string.Join(",", _configuredFields.Order(StringComparer.Ordinal));
     }
 
     /// <summary>The metadata keys of <see cref="Fields"/>: the field rows that count toward document frequency.</summary>
@@ -80,7 +94,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     /// <summary>
     /// The statistics key recording which analyzer produced the stored terms. Opened with another, the index
-    /// re-tokenizes its stored chunks (<see cref="RebuildTermsAsync"/>).
+    /// re-tokenizes its stored chunks (<see cref="RunRebuildAsync"/>).
     /// </summary>
     private readonly string _analyzerKey;
 
@@ -88,6 +102,17 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     /// <summary>Chunks re-tokenized per transaction when the index rebuilds its terms.</summary>
     private const int RebuildBatchSize = 500;
+
+    /// <summary>
+    /// The statistics key that marks a rebuild in progress and names the definition it rebuilds toward: the analyzer
+    /// identity and the configured field set. Its row is what each batch of the rebuild locks.
+    /// </summary>
+    private readonly string _rebuildTargetKey;
+
+    private const string RebuildTargetKeyPrefix = "rebuild_target:";
+
+    /// <summary>The statistics key prefix of the rebuild's cursor: the last chunk id of the last committed batch.</summary>
+    private const string RebuildCursorKeyPrefix = "rebuild_after:";
 
     #region Dialect surface
 
@@ -132,6 +157,13 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// with the lock a posting's foreign key takes on its term row, which other writers hold to their commit.
     /// </summary>
     protected virtual string? TermRowLockClause => null;
+
+    /// <summary>
+    /// Row-lock clause that takes one row exclusively until commit, or null where the backend runs one writer at a time.
+    /// A rebuild batch locks the row that marks the rebuild with it, so processes rebuilding the same index take turns
+    /// batch by batch and each continues from the cursor the previous batch committed.
+    /// </summary>
+    protected virtual string? ExclusiveRowLockClause => null;
 
     /// <summary>
     /// Row-lock clause for selecting the zero-frequency term rows a write removes, or null to delete them directly.
@@ -226,10 +258,24 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// <summary>
     /// Creates the keyword index schema if it is not there yet. Every operation does this lazily;
     /// calling it up front is what lets Build() offer the same contract as every other component —
-    /// once it returns, the tables exist.
+    /// once it returns, the tables exist. A rebuild the index needs (a different analyzer or field set) is started in
+    /// the background and not waited for; see <see cref="WaitForMaintenanceAsync"/>.
     /// </summary>
     public Task EnsureSchemaAsync(CancellationToken cancellationToken = default)
         => EnsureInitializedAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public async Task WaitForMaintenanceAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        await _maintenance.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        if (Volatile.Read(ref _rebuild) is { Status: KeywordIndexRebuildStatus.Failed } failed)
+        {
+            throw new InvalidOperationException(
+                $"The keyword index rebuild ({failed.Change}) failed: {failed.Error}", _rebuildFailure);
+        }
+    }
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
@@ -247,16 +293,31 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 await ExecuteSchemaDdlAsync(connection, cancellationToken).ConfigureAwait(false);
             }
 
+            // An interrupted rebuild toward this definition is resumed before anything else is judged: the store is part
+            // re-tokenized, and a sample of it would only report that it differs.
+            var resuming = await ReadPendingRebuildAsync(cancellationToken).ConfigureAwait(false);
+
             // Read before the recount below rewrites the recorded field set.
-            var definitionChange = await DescribeIndexDefinitionChangeAsync(cancellationToken).ConfigureAwait(false);
+            var definitionChange = resuming
+                ? null
+                : await DescribeIndexDefinitionChangeAsync(cancellationToken).ConfigureAwait(false);
 
             await RunWithConcurrencyRetryAsync(
                 () => ReconcileDocumentFrequencyFieldsAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
 
             if (definitionChange is not null)
-                await RebuildTermsAsync(definitionChange, cancellationToken).ConfigureAwait(false);
-
-            await RecordAnalyzerAsync(cancellationToken).ConfigureAwait(false);
+            {
+                await BeginRebuildAsync(cancellationToken).ConfigureAwait(false);
+                StartRebuild(definitionChange);
+            }
+            else if (resuming)
+            {
+                StartRebuild($"resuming the rebuild toward {_rebuildTargetKey[RebuildTargetKeyPrefix.Length..]}");
+            }
+            else
+            {
+                await RecordAnalyzerAsync(cancellationToken).ConfigureAwait(false);
+            }
 
             _initialized = true;
             LogServiceInitialized(Logger, BackendName);
@@ -860,41 +921,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
         try
         {
-            var affectedTermIds = new HashSet<long>();
-            var statistics = new StatisticsDelta();
-            var frequencies = new DocumentFrequencyDelta();
-
-            // Chunks of a replaced document that this batch does not write again are removed in the same transaction.
-            var written = new HashSet<string>(tokenized.Select(t => t.Chunk.Id), StringComparer.Ordinal);
-            var stale = new List<string>();
-            foreach (var documentId in replacedDocumentIds)
-            {
-                stale.AddRange((await ReadChunkIdsForDocumentAsync(connection, documentId, cancellationToken).ConfigureAwait(false))
-                    .Where(id => !written.Contains(id)));
-            }
-
-            await LockChunksAsync(connection, [.. written, .. stale], cancellationToken).ConfigureAwait(false);
-
-            // Ids for every term the batch writes, body and fields alike, taken without locking a term row. The rows
-            // the replaced chunks held are learned from the postings their deletion removes; all of them are locked
-            // only at the end, just before their document frequency moves (ApplyDocumentFrequencyDeltaAsync).
-            var termIds = await AcquireTermIdsAsync(
-                connection,
-                TermAcquisitionOrder(tokenized
-                    .Select(t => (IEnumerable<string>)t.Terms)
-                    .Concat(tokenized.SelectMany(t => t.FieldTerms.Select(f => (IEnumerable<string>)f.Terms)))),
-                cancellationToken).ConfigureAwait(false);
-
-            foreach (var id in termIds.Values)
-                affectedTermIds.Add(id);
-
-            await DeleteChunkRowsAsync(connection, stale, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
-
-            var indexedChunks = await WriteChunksAsync(connection, tokenized, termIds, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
-
-            await ApplyDocumentFrequencyDeltaAsync(connection, frequencies, affectedTermIds, cancellationToken).ConfigureAwait(false);
-            await ApplyStatisticsDeltaAsync(connection, statistics, cancellationToken).ConfigureAwait(false);
-
+            var indexedChunks = await WriteBatchAsync(connection, tokenized, replacedDocumentIds, cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             LogChunksIndexed(Logger, indexedChunks);
         }
@@ -903,6 +930,53 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Writes a batch on the open transaction: removes the replaced documents' chunks the batch does not write again,
+    /// writes the batch, and moves document frequency and the statistics. Returns how many chunks hold terms.
+    /// </summary>
+    private async Task<int> WriteBatchAsync(
+        DbConnection connection,
+        IReadOnlyList<(DocumentChunk Chunk, List<string> Terms, List<(string Field, List<string> Terms)> FieldTerms)> tokenized,
+        IReadOnlyList<string> replacedDocumentIds,
+        CancellationToken cancellationToken)
+    {
+        var affectedTermIds = new HashSet<long>();
+        var statistics = new StatisticsDelta();
+        var frequencies = new DocumentFrequencyDelta();
+
+        // Chunks of a replaced document that this batch does not write again are removed in the same transaction.
+        var written = new HashSet<string>(tokenized.Select(t => t.Chunk.Id), StringComparer.Ordinal);
+        var stale = new List<string>();
+        foreach (var documentId in replacedDocumentIds)
+        {
+            stale.AddRange((await ReadChunkIdsForDocumentAsync(connection, documentId, cancellationToken).ConfigureAwait(false))
+                .Where(id => !written.Contains(id)));
+        }
+
+        await LockChunksAsync(connection, [.. written, .. stale], cancellationToken).ConfigureAwait(false);
+
+        // Ids for every term the batch writes, body and fields alike, taken without locking a term row. The rows
+        // the replaced chunks held are learned from the postings their deletion removes; all of them are locked
+        // only at the end, just before their document frequency moves (ApplyDocumentFrequencyDeltaAsync).
+        var termIds = await AcquireTermIdsAsync(
+            connection,
+            TermAcquisitionOrder(tokenized
+                .Select(t => (IEnumerable<string>)t.Terms)
+                .Concat(tokenized.SelectMany(t => t.FieldTerms.Select(f => (IEnumerable<string>)f.Terms)))),
+            cancellationToken).ConfigureAwait(false);
+
+        foreach (var id in termIds.Values)
+            affectedTermIds.Add(id);
+
+        await DeleteChunkRowsAsync(connection, stale, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
+
+        var indexedChunks = await WriteChunksAsync(connection, tokenized, termIds, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
+
+        await ApplyDocumentFrequencyDeltaAsync(connection, frequencies, affectedTermIds, cancellationToken).ConfigureAwait(false);
+        await ApplyStatisticsDeltaAsync(connection, statistics, cancellationToken).ConfigureAwait(false);
+        return indexedChunks;
     }
 
     /// <summary>
@@ -2189,50 +2263,220 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         => string.Create(CultureInfo.InvariantCulture, $"field\u0001{field}\u0001{term}\u0001{frequency}\u0001{fieldLength}\u0001{documentLength}");
 
     /// <summary>
-    /// Re-tokenizes every stored chunk with the configured analyzer and field set, through the same write path as
-    /// indexing, a batch of <see cref="RebuildBatchSize"/> chunks per transaction in chunk-id order.
+    /// Whether an interrupted rebuild toward the configured definition is recorded. A rebuild recorded toward another
+    /// definition - the host was restarted under yet another analyzer or field set - is dropped, and the store is then
+    /// judged afresh like any other.
+    /// </summary>
+    private async Task<bool> ReadPendingRebuildAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        var targets = await ReadStatisticKeysAsync(connection, RebuildTargetKeyPrefix, cancellationToken).ConfigureAwait(false);
+        if (targets.Count == 1 && string.Equals(targets[0], _rebuildTargetKey, StringComparison.Ordinal))
+            return true;
+
+        if (targets.Count > 0)
+            await DeleteStatisticKeysAsync(connection, [RebuildTargetKeyPrefix, RebuildCursorKeyPrefix], cancellationToken).ConfigureAwait(false);
+        return false;
+    }
+
+    /// <summary>
+    /// Records that a rebuild toward the configured definition starts, from the first chunk. The recorded analyzer is
+    /// removed in the same transaction: from now on the stored terms are a mix, and a host that reopens the index under
+    /// the previous analyzer must find it unrecorded - and verify it - rather than take it as built by that analyzer.
+    /// </summary>
+    private async Task BeginRebuildAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await DeleteStatisticKeysAsync(
+                connection, [RebuildTargetKeyPrefix, RebuildCursorKeyPrefix, AnalyzerKeyPrefix], cancellationToken).ConfigureAwait(false);
+            await UpsertStatisticAsync(connection, _rebuildTargetKey, 1, cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>Starts the rebuild in the background, under the service's own cancellation.</summary>
+    private void StartRebuild(string change)
+    {
+        Volatile.Write(ref _rebuild, new KeywordIndexRebuild
+        {
+            Change = change,
+            StartedAt = DateTimeOffset.UtcNow,
+            Status = KeywordIndexRebuildStatus.Running,
+        });
+        var cancellationToken = _maintenanceCancellation.Token;
+        _maintenance = Task.Run(() => RunRebuildAsync(change, cancellationToken), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Re-tokenizes every stored chunk with the configured analyzer and field set, a batch of
+    /// <see cref="RebuildBatchSize"/> chunks per transaction in chunk-id order, then records the analyzer.
     /// </summary>
     /// <remarks>
-    /// The chunk payload (content and metadata) is stored, so the terms can be rederived without the caller. A chunk
-    /// the new analyzer produces no terms for leaves the index, as it would on a write. A chunk the previous analyzer
-    /// produced no terms for was never stored and cannot be recovered here; re-index its document. Interrupted, the
-    /// rebuild runs again on the next open (the analyzer is recorded only after it completes); re-tokenizing a chunk
-    /// twice writes the same rows.
+    /// <para>
+    /// Runs in the background so opening the index does not wait for it: searches and writes run meanwhile against the
+    /// index as it stands. A write during the rebuild is analyzed with the configured analyzer, so it is already in the
+    /// new form; re-tokenizing it again writes the same rows.
+    /// </para>
+    /// <para>
+    /// Each batch commits the cursor with its rows (<see cref="RebuildNextBatchAsync"/>), so a host stopped part-way -
+    /// a deploy, a restart, a health-check kill - continues on its next open instead of starting over. Never fails its
+    /// task: the outcome is the <see cref="KeywordIndexRebuild"/> state, which <see cref="WaitForMaintenanceAsync"/>
+    /// turns into an exception for a caller that waits.
+    /// </para>
+    /// <para>
+    /// The chunk payload (content and metadata) is stored, so the terms can be rederived without the caller. A chunk the
+    /// new analyzer produces no terms for leaves the index, as it would on a write. A chunk the previous analyzer
+    /// produced no terms for was never stored and cannot be recovered here; re-index its document.
+    /// </para>
     /// </remarks>
-    private async Task RebuildTermsAsync(string change, CancellationToken cancellationToken)
+    private async Task RunRebuildAsync(string change, CancellationToken cancellationToken)
     {
-        long total;
-        await using (var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false))
-            total = await CountChunksAsync(connection, cancellationToken).ConfigureAwait(false);
-        LogRebuildStarted(Logger, BackendName, change, total);
-
-        string? after = null;
-        var rebuilt = 0;
-        while (true)
+        try
         {
-            List<string> ids;
-            Dictionary<string, DocumentChunk> chunks;
+            long total;
             await using (var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false))
+                total = await CountChunksAsync(connection, cancellationToken).ConfigureAwait(false);
+            LogRebuildStarted(Logger, BackendName, change, total);
+
+            var rebuilt = 0;
+            while (true)
             {
-                ids = await ReadChunkIdPageAsync(connection, after, RebuildBatchSize, cancellationToken).ConfigureAwait(false);
-                if (ids.Count == 0)
+                var batch = (More: false, Rebuilt: 0);
+                await RunWithConcurrencyRetryAsync(
+                    async () => batch = await RebuildNextBatchAsync(cancellationToken).ConfigureAwait(false),
+                    cancellationToken).ConfigureAwait(false);
+                rebuilt += batch.Rebuilt;
+                if (!batch.More)
                     break;
-                chunks = await LoadChunksAsync(connection, ids, cancellationToken).ConfigureAwait(false);
             }
 
+            Volatile.Write(ref _rebuild, null);
+            LogRebuildCompleted(Logger, BackendName, rebuilt, Analyzer.Identity);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Volatile.Write(ref _rebuild, Volatile.Read(ref _rebuild)! with { Status = KeywordIndexRebuildStatus.Interrupted });
+            LogRebuildInterrupted(Logger, BackendName);
+        }
+        catch (Exception ex)
+        {
+            _rebuildFailure = ex;
+            Volatile.Write(ref _rebuild, Volatile.Read(ref _rebuild)! with { Status = KeywordIndexRebuildStatus.Failed, Error = ex.Message });
+            LogRebuildFailed(Logger, BackendName, ex);
+        }
+    }
+
+    /// <summary>
+    /// Re-tokenizes the next batch after the cursor in one transaction and moves the cursor with it, or - when no chunk
+    /// is left - records the analyzer and removes the rebuild's marker. Returns whether a batch was written.
+    /// </summary>
+    /// <remarks>
+    /// The batch's chunks are locked before they are read, inside the transaction that writes them: a chunk a writer
+    /// deleted meanwhile is not read and so not brought back, and a chunk a writer replaced is read as it now stands
+    /// rather than its earlier text written over the new one. The marker row is locked first, so a second process
+    /// rebuilding the same index waits for this batch and then continues after it.
+    /// </remarks>
+    private async Task<(bool More, int Rebuilt)> RebuildNextBatchAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!await LockRebuildTargetAsync(connection, cancellationToken).ConfigureAwait(false))
+            {
+                // Finished by another process, or the index was cleared.
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return (false, 0);
+            }
+
+            var after = (await ReadStatisticKeysAsync(connection, RebuildCursorKeyPrefix, cancellationToken).ConfigureAwait(false))
+                .Select(key => key[RebuildCursorKeyPrefix.Length..])
+                .Max(StringComparer.Ordinal);
+            var ids = await ReadChunkIdPageAsync(connection, after, RebuildBatchSize, cancellationToken).ConfigureAwait(false);
+            if (ids.Count == 0)
+            {
+                await DeleteStatisticKeysAsync(connection, [RebuildTargetKeyPrefix, RebuildCursorKeyPrefix], cancellationToken).ConfigureAwait(false);
+                await WriteAnalyzerKeyAsync(connection, cancellationToken).ConfigureAwait(false);
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                return (false, 0);
+            }
+
+            await LockChunksAsync(connection, ids, cancellationToken).ConfigureAwait(false);
+            var chunks = await LoadChunksAsync(connection, ids, cancellationToken).ConfigureAwait(false);
             var tokenized = ids
                 .Where(chunks.ContainsKey)
                 .Select(id => chunks[id])
                 .Select(c => (Chunk: c, Terms: Tokenize(c.Content).ToList(), FieldTerms: TokenizeFields(c)))
                 .ToList();
-            await RunWithConcurrencyRetryAsync(
-                () => IndexTokenizedChunksAsync(tokenized, [], cancellationToken), cancellationToken).ConfigureAwait(false);
+            await WriteBatchAsync(connection, tokenized, [], cancellationToken).ConfigureAwait(false);
 
-            rebuilt += tokenized.Count;
-            after = ids[^1];
+            await DeleteStatisticKeysAsync(connection, [RebuildCursorKeyPrefix], cancellationToken).ConfigureAwait(false);
+            await UpsertStatisticAsync(connection, RebuildCursorKeyPrefix + ids[^1], 1, cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return (true, tokenized.Count);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>Locks the row that marks the rebuild toward the configured definition; false when there is none.</summary>
+    private async Task<bool> LockRebuildTargetAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT key FROM bm25_statistics WHERE key = @key {ExclusiveRowLockClause}";
+        AddParameter(command, "@key", _rebuildTargetKey);
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not (null or DBNull);
+    }
+
+    /// <summary>The rebuild as it stands, with its progress read from the index; null when there is none.</summary>
+    private async Task<KeywordIndexRebuild?> DescribeRebuildAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref _rebuild) is not { } rebuild)
+            return null;
+
+        var after = (await ReadStatisticKeysAsync(connection, RebuildCursorKeyPrefix, cancellationToken).ConfigureAwait(false))
+            .Select(key => key[RebuildCursorKeyPrefix.Length..])
+            .Max(StringComparer.Ordinal);
+        long completed = 0;
+        if (after is not null)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM bm25_chunks WHERE chunk_id <= @after";
+            AddParameter(command, "@after", after);
+            completed = Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture);
         }
 
-        LogRebuildCompleted(Logger, BackendName, rebuilt, Analyzer.Identity);
+        return rebuild with
+        {
+            Completed = completed,
+            Total = await CountChunksAsync(connection, cancellationToken).ConfigureAwait(false),
+        };
+    }
+
+    /// <summary>Deletes the statistics rows whose keys start with any of <paramref name="prefixes"/>.</summary>
+    private static async Task DeleteStatisticKeysAsync(DbConnection connection, IReadOnlyList<string> prefixes, CancellationToken cancellationToken)
+    {
+        foreach (var prefix in prefixes)
+        {
+            foreach (var key in await ReadStatisticKeysAsync(connection, prefix, cancellationToken).ConfigureAwait(false))
+            {
+                await using var deleteCmd = connection.CreateCommand();
+                deleteCmd.CommandText = "DELETE FROM bm25_statistics WHERE key = @key";
+                AddParameter(deleteCmd, "@key", key);
+                await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
     }
 
     /// <summary>The next <paramref name="size"/> chunk ids after <paramref name="after"/> (from the start when null), in order.</summary>
@@ -2444,7 +2688,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             AverageDocumentLength = avgDocLength,
             IndexSizeBytes = 0,
             LastOptimizedAt = null,
-            TopFrequentTerms = topTerms
+            TopFrequentTerms = topTerms,
+            Rebuild = await DescribeRebuildAsync(connection, cancellationToken).ConfigureAwait(false),
         };
     }
 
@@ -2869,6 +3114,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// </summary>
     public void Dispose()
     {
+        // Cancelled before the subclass releases its connections, and not waited for: a batch in flight rolls back with
+        // its connection, and the cursor stands at the last committed batch for the next open to continue from.
+        if (!_disposed)
+            _maintenanceCancellation.Cancel();
         Dispose(true);
         GC.SuppressFinalize(this);
     }
@@ -2882,6 +3131,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         if (disposing)
         {
             _initLock.Dispose();
+            _maintenanceCancellation.Dispose();
         }
 
         _disposed = true;
@@ -2936,7 +3186,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     [LoggerMessage(
         Level = LogLevel.Warning,
-        Message = "Keyword index ({Backend}) was built with a different definition ({Change}); re-tokenizing its {ChunkCount} stored chunks before first use")]
+        Message = "Keyword index ({Backend}) was built with a different definition ({Change}); re-tokenizing its {ChunkCount} stored chunks in the background - searches see the index as it stands until it completes")]
     private static partial void LogRebuildStarted(ILogger logger, string backend, string change, long chunkCount);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index ({Backend}) re-tokenized {ChunkCount} chunks with analyzer {Analyzer}")]
@@ -2946,6 +3196,12 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         Level = LogLevel.Information,
         Message = "Keyword index ({Backend}) recorded no analyzer; {ChunkCount} sampled chunks hold exactly the terms {Analyzer} produces, so it is recorded without re-tokenizing")]
     private static partial void LogAnalyzerAdoptedWithoutRebuild(ILogger logger, string backend, int chunkCount, string analyzer);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index ({Backend}) rebuild interrupted; the next open continues it")]
+    private static partial void LogRebuildInterrupted(ILogger logger, string backend);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Keyword index ({Backend}) rebuild failed; the next open retries it")]
+    private static partial void LogRebuildFailed(ILogger logger, string backend, Exception exception);
 
     #endregion
 }
