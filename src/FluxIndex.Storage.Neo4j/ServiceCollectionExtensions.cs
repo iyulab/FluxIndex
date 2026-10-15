@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FluxIndex.Storage.Neo4j;
@@ -20,6 +21,7 @@ public static class ServiceCollectionExtensions
     {
         services.Configure(configureOptions);
         services.AddSingleton<IGraphStore, Neo4jGraphStore>();
+        services.AddGraphChunkRetrieval();
 
         return services;
     }

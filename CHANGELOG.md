@@ -7,12 +7,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
-### Dependencies
-- Re-pinned sibling package(s) `FluxCurator` 0.14.0 -> 0.15.0.
-
----
-
-## [Unreleased]
+### Added
+- **Graph retrieval without loading an index: `IGraphChunkRetriever`.** `RetrieveAsync(query, GraphRetrievalOptions)` returns the
+  chunks the persisted entity graph connects to the entities a query names — seeds looked up by exact name in one store round
+  trip (word runs, possessives, and substrings of CJK/Hangul words so particles do not hide a name), a bounded walk of
+  `MaxHops` around them (`HopDecay` per hop), scored per chunk by the entities it mentions — within the same metadata
+  `Filters` the vector and keyword legs take (a document scope also cuts entities before chunks are fetched). Every graph
+  store registration registers it (`AddGraphChunkRetrieval`).
 
 ### Changed
 - **PostgreSQL: indexing new vocabulary is several times faster.** `bm25_terms.term` now uses the `"C"` collation (byte
@@ -21,6 +22,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   index level — measured on Korean text under `en_US.utf8`, indexing 2,000 chunks with a fresh vocabulary went from
   107 s to 31–33 s. A table created by an earlier release is converted once on first open (the column type does not
   change; its unique index is rebuilt under a short exclusive lock). Search results are unchanged.
+
+### Dependencies
+- Re-pinned sibling package(s) `FluxCurator` 0.14.0 -> 0.15.0.
 
 ## [0.96.0] - 2026-10-15
 

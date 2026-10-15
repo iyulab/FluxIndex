@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
 using FluxIndex.SDK;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,6 +53,7 @@ public static class EntityGraphServiceCollectionExtensions
         });
 
         services.AddScoped<IGraphStore, PostgresEntityGraphStore>();
+        services.AddGraphChunkRetrieval();
 
         // Schema provisioning at host start, gated by AutoMigrate — the same shape as the SQLite entity graph and the
         // PostgreSQL graph store. Before 0.72.0 AutoMigrate was copied here and never read: nothing provisioned the schema

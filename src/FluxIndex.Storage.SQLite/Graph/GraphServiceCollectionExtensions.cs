@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
 using FluxIndex.SDK;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -98,6 +99,7 @@ public static class GraphServiceCollectionExtensions
 
         // IGraphStore 구현 등록
         services.AddScoped<IGraphStore, SQLiteEntityGraphStore>();
+        services.AddGraphChunkRetrieval();
         services.AddScoped<SQLiteEntityGraphStore>();
 
         // 마이그레이션 — 두 경로(SDK 빌더 Build(), 앱 호스트 시작)가 같은 루틴을 공유한다.

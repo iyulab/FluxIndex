@@ -653,6 +653,20 @@ public static class MetadataAugmentationServiceExtensions
     }
 
     /// <summary>
+    /// Registers <see cref="IGraphChunkRetriever"/> — retrieval through the persisted entity graph, the third leg of a hybrid
+    /// search (<c>HybridSearchOptions.GraphOptions</c>). Every graph store registration (SQLite, PostgreSQL, Neo4j) calls this,
+    /// so an application that registers a graph store has it; it needs that <see cref="IGraphStore"/> and an
+    /// <see cref="IVectorStore"/>.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddGraphChunkRetrieval(this IServiceCollection services)
+    {
+        services.TryAddScoped<IGraphChunkRetriever, Graph.GraphChunkRetriever>();
+        return services;
+    }
+
+    /// <summary>
     /// Hierarchical Summarization Service registration.
     /// Implements map-reduce summarization at community level with caching
     /// and global search support for GraphRAG.

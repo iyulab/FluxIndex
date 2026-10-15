@@ -50,6 +50,11 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   threshold keeps its meaning whether the endpoint is a hosted API or a llama.cpp server.
 - **Graph traversal** — `IGraphTraversalService` (`TraverseBfsAsync`, `TraverseDfsAsync`, `FindShortestPathAsync` (BFS),
   `FindStrongestPathAsync` (Dijkstra), `ComputeChunkImportanceAsync` (PageRank-style)). Registered by the builder.
+- **Graph retrieval** — `IGraphChunkRetriever.RetrieveAsync(query, GraphRetrievalOptions)` reads the persisted entity graph
+  directly (no index loaded per query): the entities the query names (word runs, plus substrings of CJK/Hangul words, so a
+  particle-suffixed «삼성전자의» finds «삼성전자»), the entities up to `MaxHops` around them, and the chunks they were extracted
+  from — a chunk that mentions several of the query's entities ranks first. `Filters` scope it like the vector and keyword
+  legs. Registered by every graph store registration (`AddSQLiteEntityGraphStore`, `AddPostgresEntityGraph`, `AddNeo4jGraphStore`, and the builder paths that call them).
   **GraphRAG**: opt-in with `ConfigureServices(s => s.AddFullGraphRAG())`, which registers `IGraphRAGService` together
   with the entity graph, Leiden community detection and hierarchical summarization it needs — each a `TryAdd`, so an
   `IEntityGraphService` (or either of the others) you register first is the one it uses. Once the service is registered, `Indexer` builds the graph for
