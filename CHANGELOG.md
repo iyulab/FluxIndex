@@ -42,6 +42,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Dependencies
 - Re-pinned sibling package(s) `FileFlux` 0.63.1 -> 0.64.0, `FluxCurator` 0.15.0 -> 0.16.0.
+- Re-pinned sibling package(s) `FileFlux` 0.64.0 -> 0.65.0.
 
 ---
 
