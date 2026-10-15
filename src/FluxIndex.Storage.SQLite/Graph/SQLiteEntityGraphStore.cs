@@ -486,23 +486,17 @@ public partial class SQLiteEntityGraphStore : IGraphStore
             currentLevel = nextLevel;
         }
 
-        // Fetch all entities
-        var entities = new List<GraphEntity>();
-        foreach (var id in visited)
-        {
-            var entity = await GetEntityByIdAsync(context, id, ct);
-            if (entity != null)
-                entities.Add(entity);
-        }
+        // One query each for the visited entities and the traversed relationships, not one per row: a graph-leg search
+        // walks several seeds per query, each visiting up to MaxNodes entities.
+        var visitedIds = visited.ToList();
+        var entities = (await context.Entities.Where(e => visitedIds.Contains(e.Id)).ToListAsync(ct))
+            .Select(MapToGraphEntity)
+            .ToList();
 
-        // Fetch all relationships
-        var relationships = new List<GraphRelationship>();
-        foreach (var relId in traversedRelationshipIds)
-        {
-            var rel = await context.Relationships.FindAsync([relId], ct);
-            if (rel != null)
-                relationships.Add(MapToGraphRelationship(rel));
-        }
+        var relationshipIds = traversedRelationshipIds.ToList();
+        var relationships = (await context.Relationships.Where(r => relationshipIds.Contains(r.Id)).ToListAsync(ct))
+            .Select(MapToGraphRelationship)
+            .ToList();
 
         return new GraphStoreTraversalResult
         {

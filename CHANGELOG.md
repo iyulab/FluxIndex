@@ -28,6 +28,8 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `Both = 3`, `Graph = 4` (before: `Vector = 0`, `Sparse = 1`, `Both = 2`). A row the graph leg also found is
   `Vector | Graph` and so on. Migration: compare with `HasFlag` (or `& SearchSource.Both`) where the graph leg can be on,
   and re-read any stored numeric value.
+- **SQLite graph traversal reads what it visited in two queries** instead of one per entity and one per relationship
+  (`IGraphStore.TraverseAsync`), which the graph leg calls once per seed.
 - **The Qdrant hybrid search service is registered Scoped** (was Singleton), like the core service: it now takes the graph
   leg's retriever, which takes a scoped graph store on SQLite and PostgreSQL.
 - **PostgreSQL: indexing new vocabulary is several times faster.** `bm25_terms.term` now uses the `"C"` collation (byte
