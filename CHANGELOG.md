@@ -12,6 +12,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **PostgreSQL: indexing new vocabulary is several times faster.** `bm25_terms.term` now uses the `"C"` collation (byte
+  order). Terms are only compared for equality and sorted to give writers one insert order, so the database's
+  linguistic collation bought nothing and cost every term insert and document-frequency update a locale comparison per
+  index level — measured on Korean text under `en_US.utf8`, indexing 2,000 chunks with a fresh vocabulary went from
+  107 s to 31–33 s. A table created by an earlier release is converted once on first open (the column type does not
+  change; its unique index is rebuilt under a short exclusive lock). Search results are unchanged.
+
 ## [0.96.0] - 2026-10-15
 
 ### Added
