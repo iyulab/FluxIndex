@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.96.0] - 2026-10-15
 
 ### Added
 - **A keyword index rebuild can be watched and waited for.** `KeywordIndexStatistics.Rebuild` (from
@@ -48,6 +48,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **Spellings an analyzer emits in different case now count as one term.** A custom analyzer that keeps case (`Index`,
   `index`) wrote one posting whose frequency was the last spelling's count instead of their sum; the frequency is now
   the sum, so BM25 ranks such a chunk as it ranks the lower-cased text.
+
+### Dependencies
+- Re-pinned sibling package(s) `FileFlux` 0.63.0 -> 0.63.1, `LMSupply.Embedder` 0.121.0 -> 0.122.0, `LMSupply.Generator` 0.121.0 -> 0.122.0, `LMSupply.Reranker` 0.121.0 -> 0.122.0.
 
 ## [0.95.0] - 2026-10-15
 
