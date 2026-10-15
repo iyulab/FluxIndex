@@ -18,6 +18,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `KeywordIndexRebuildStatus.Failed` is replaced by `Retrying = 4` (3 is left unused), and
   `WaitForMaintenanceAsync()` no longer throws for a failed batch — it keeps waiting. Migration: read
   `Status == Retrying` and `Error` where you read `Failed`; bound a readiness wait with a cancellation token.
+- **A keyword-index rebuild writes only the chunks whose postings change.** Each batch compares the postings the
+  configured analyzer and fields produce with the stored ones (body terms with frequency and length; field terms of any
+  field, so rows of a field no longer configured count as a change) and rewrites only the chunks that differ. Rebuilding
+  an index that already holds the right terms — its recorded analyzer was lost, or a sampled chunk differed — is now a
+  read pass plus a few writes instead of rewriting every posting. The completion log line reports how many chunks were
+  rewritten.
 
 ### Dependencies
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.22.0 -> 0.22.1.

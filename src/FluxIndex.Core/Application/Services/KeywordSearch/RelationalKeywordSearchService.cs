@@ -2130,7 +2130,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         {
             var ids = batch.ToList();
             var chunks = await LoadChunksAsync(connection, ids, cancellationToken).ConfigureAwait(false);
-            var stored = await ReadPostingKeysAsync(connection, ids, cancellationToken).ConfigureAwait(false);
+            var stored = await ReadPostingKeysAsync(connection, ids, configuredFieldsOnly: true, cancellationToken).ConfigureAwait(false);
             foreach (var id in ids)
             {
                 // Deleted between the two reads: there is nothing left to compare.
@@ -2174,30 +2174,38 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// </summary>
     private HashSet<string> ExpectedPostingKeys(DocumentChunk chunk)
     {
-        var keys = new HashSet<string>(StringComparer.Ordinal);
         var terms = Tokenize(chunk.Content).ToList();
+        return terms.Count == 0 ? new HashSet<string>(StringComparer.Ordinal) : PostingKeys(terms, TokenizeFields(chunk));
+    }
+
+    /// <summary>The posting keys of a chunk analyzed to <paramref name="terms"/> and <paramref name="fieldTerms"/>.</summary>
+    private static HashSet<string> PostingKeys(List<string> terms, List<(string Field, List<string> Terms)> fieldTerms)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
         if (terms.Count == 0)
             return keys;
 
         foreach (var (term, frequency) in PostingFrequencies(terms))
             keys.Add(BodyPostingKey(term, frequency, terms.Count));
 
-        foreach (var (field, fieldTerms) in TokenizeFields(chunk))
+        foreach (var (field, fieldTermList) in fieldTerms)
         {
-            foreach (var (term, frequency) in PostingFrequencies(fieldTerms))
-                keys.Add(FieldPostingKey(field, term, frequency, fieldTerms.Count, terms.Count));
+            foreach (var (term, frequency) in PostingFrequencies(fieldTermList))
+                keys.Add(FieldPostingKey(field, term, frequency, fieldTermList.Count, terms.Count));
         }
 
         return keys;
     }
 
     /// <summary>
-    /// The stored body postings and configured-field postings of <paramref name="chunkIds"/>, by chunk id, as the keys
-    /// <see cref="ExpectedPostingKeys"/> builds.
+    /// The stored body postings and field postings of <paramref name="chunkIds"/>, by chunk id, as the keys
+    /// <see cref="PostingKeys"/> builds - field postings of the configured fields only, or of every field when
+    /// <paramref name="configuredFieldsOnly"/> is false.
     /// </summary>
     private async Task<Dictionary<string, HashSet<string>>> ReadPostingKeysAsync(
         DbConnection connection,
         List<string> chunkIds,
+        bool configuredFieldsOnly,
         CancellationToken cancellationToken)
     {
         var keys = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
@@ -2224,7 +2232,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             }
         }
 
-        if (Fields.Fields.Count == 0)
+        if (configuredFieldsOnly && Fields.Fields.Count == 0)
             return keys;
 
         await using (var fieldCmd = connection.CreateCommand())
@@ -2232,7 +2240,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             fieldCmd.CommandText =
                 "SELECT f.chunk_id, f.field, t.term, f.term_frequency, f.field_length, f.document_length "
                 + "FROM bm25_field_postings f JOIN bm25_terms t ON t.id = f.term_id "
-                + $"WHERE f.chunk_id IN ({AddChunkIdParameters(fieldCmd, chunkIds)}) AND {BuildFieldPredicate(fieldCmd, "f.field")}";
+                + $"WHERE f.chunk_id IN ({AddChunkIdParameters(fieldCmd, chunkIds)})"
+                + (configuredFieldsOnly ? $" AND {BuildFieldPredicate(fieldCmd, "f.field")}" : "");
             await using var reader = await fieldCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
@@ -2336,6 +2345,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         var pacing = new KeywordRebuildPacing(ReadCommandTimeout());
         long? total = null;
         var rebuilt = 0;
+        var rewritten = 0;
         try
         {
             while (true)
@@ -2351,11 +2361,12 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                         stopwatch.Restart();
                     }
 
-                    var batch = (More: false, Rebuilt: 0);
+                    var batch = (More: false, Rebuilt: 0, Rewritten: 0);
                     await RunWithConcurrencyRetryAsync(
                         async () => batch = await RebuildNextBatchAsync(pacing.BatchSize, cancellationToken).ConfigureAwait(false),
                         cancellationToken).ConfigureAwait(false);
                     rebuilt += batch.Rebuilt;
+                    rewritten += batch.Rewritten;
                     if (!batch.More)
                         break;
 
@@ -2388,7 +2399,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             }
 
             Volatile.Write(ref _rebuild, null);
-            LogRebuildCompleted(Logger, BackendName, rebuilt, Analyzer.Identity);
+            LogRebuildCompleted(Logger, BackendName, rebuilt, Analyzer.Identity, rewritten);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -2415,12 +2426,21 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// Returns whether a batch was written.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The batch's chunks are locked before they are read, inside the transaction that writes them: a chunk a writer
     /// deleted meanwhile is not read and so not brought back, and a chunk a writer replaced is read as it now stands
     /// rather than its earlier text written over the new one. The marker row is locked first, so a second process
     /// rebuilding the same index waits for this batch and then continues after it.
+    /// </para>
+    /// <para>
+    /// Only chunks whose stored postings differ from what the configured definition produces are written: each body
+    /// term with its frequency and the chunk's length, and each field term (of any field, so rows of a field no longer
+    /// configured make the chunk differ) with its frequencies and lengths. A rebuild of a store that mostly holds the
+    /// right terms already - an index whose recorded analyzer was lost or renamed - is then a read pass, instead of
+    /// rewriting every posting of a table that may hold millions.
+    /// </para>
     /// </remarks>
-    private async Task<(bool More, int Rebuilt)> RebuildNextBatchAsync(int batchSize, CancellationToken cancellationToken)
+    private async Task<(bool More, int Rebuilt, int Rewritten)> RebuildNextBatchAsync(int batchSize, CancellationToken cancellationToken)
     {
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -2430,7 +2450,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             {
                 // Finished by another process, or the index was cleared.
                 await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                return (false, 0);
+                return (false, 0, 0);
             }
 
             var after = (await ReadStatisticKeysAsync(connection, RebuildCursorKeyPrefix, cancellationToken).ConfigureAwait(false))
@@ -2442,7 +2462,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 await DeleteStatisticKeysAsync(connection, [RebuildTargetKeyPrefix, RebuildCursorKeyPrefix], cancellationToken).ConfigureAwait(false);
                 await WriteAnalyzerKeyAsync(connection, cancellationToken).ConfigureAwait(false);
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-                return (false, 0);
+                return (false, 0, 0);
             }
 
             await LockChunksAsync(connection, ids, cancellationToken).ConfigureAwait(false);
@@ -2452,12 +2472,20 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 .Select(id => chunks[id])
                 .Select(c => (Chunk: c, Terms: Tokenize(c.Content).ToList(), FieldTerms: TokenizeFields(c)))
                 .ToList();
-            await WriteBatchAsync(connection, tokenized, [], cancellationToken).ConfigureAwait(false);
+            var stored = await ReadPostingKeysAsync(
+                connection, [.. tokenized.Select(t => t.Chunk.Id)], configuredFieldsOnly: false, cancellationToken).ConfigureAwait(false);
+            // A chunk the definition produces no terms for leaves the index, so it is always written.
+            var changed = tokenized
+                .Where(t => t.Terms.Count == 0
+                    || !PostingKeys(t.Terms, t.FieldTerms).SetEquals(stored.TryGetValue(t.Chunk.Id, out var held) ? held : []))
+                .ToList();
+            if (changed.Count > 0)
+                await WriteBatchAsync(connection, changed, [], cancellationToken).ConfigureAwait(false);
 
             await DeleteStatisticKeysAsync(connection, [RebuildCursorKeyPrefix], cancellationToken).ConfigureAwait(false);
             await UpsertStatisticAsync(connection, RebuildCursorKeyPrefix + ids[^1], 1, cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-            return (true, tokenized.Count);
+            return (true, tokenized.Count, changed.Count);
         }
         catch
         {
@@ -3225,8 +3253,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         Message = "Keyword index ({Backend}) was built with a different definition ({Change}); re-tokenizing its {ChunkCount} stored chunks in the background - searches see the index as it stands until it completes")]
     private static partial void LogRebuildStarted(ILogger logger, string backend, string change, long chunkCount);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index ({Backend}) re-tokenized {ChunkCount} chunks with analyzer {Analyzer}")]
-    private static partial void LogRebuildCompleted(ILogger logger, string backend, int chunkCount, string analyzer);
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Keyword index ({Backend}) re-tokenized {ChunkCount} chunks with analyzer {Analyzer}; {Rewritten} held different postings and were rewritten")]
+    private static partial void LogRebuildCompleted(ILogger logger, string backend, int chunkCount, string analyzer, int rewritten);
 
     [LoggerMessage(
         Level = LogLevel.Information,

@@ -170,6 +170,9 @@ public abstract class KeywordSearchDefinitionChangeContractSuite
 
         Assert.Equal(["1"], (await RankAsync(reopened, "정보", ct)).Select(r => r.Id));
         Assert.Contains(log.Messages, m => m.Level == LogLevel.Warning && m.Text.Contains("sampled chunk 1 differs", StringComparison.Ordinal));
+        // Chunks 2-3 already hold the bigram postings, so only chunk 1 is rewritten.
+        Assert.Contains(log.Messages, m => m.Text.Contains("re-tokenized 3 chunks", StringComparison.Ordinal)
+            && m.Text.Contains("1 held different postings", StringComparison.Ordinal));
     }
 
     [Fact]

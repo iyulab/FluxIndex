@@ -455,7 +455,8 @@ re-tokenizing (an information line says so); if any sampled chunk differs, the i
 The re-tokenization runs in the background (since 0.96.0): opening returns once the schema is ready,
 and searches and writes meanwhile run against the index as it stands, so keyword recall is partial
 until it completes. It works a batch per transaction and records its progress in the index, so a
-host stopped part-way continues on its next open instead of starting over. Batches start at 50
+host stopped part-way continues on its next open instead of starting over. A chunk whose stored
+postings already equal what the configured analyzer and fields produce is read, not rewritten. Batches start at 50
 chunks and grow or shrink with how long they take against the connection's command timeout; a batch
 that fails (a timeout, a dropped connection) is retried in the process from the last committed batch
 after a growing delay (1 s, doubling, at most 5 min) until the rebuild finishes. `IKeywordSearchService`
