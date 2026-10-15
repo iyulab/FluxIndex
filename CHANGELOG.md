@@ -8,7 +8,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [Unreleased]
 
 ### Fixed
-- **A Qdrant collection named without the model refuses a switched model after a restart too.** With
+- **Breaking: a Qdrant collection named without the model refuses a switched model after a restart too.** With
   `CollectionNamingStrategy.Fixed`, the store records the bound embedding identity (provider, model, dimension, revision)
   in the collection metadata and compares it when a later instance — another process, a restart — binds an identity:
   a different one throws `EmbeddingModelMismatchException` instead of storing and searching vectors of two models in
