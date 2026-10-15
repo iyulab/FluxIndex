@@ -5,6 +5,28 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Added
+- **FluxIndex takes a `Microsoft.Extensions.AI` embedding generator directly.** `FluxIndexContext.CreateBuilder()
+  .UseEmbeddingGenerator(documents, queries)` — or `services.AddEmbeddingGeneratorEmbedding(queriesServiceKey)` over the
+  container's generator — embeds with any `IEmbeddingGenerator<string, Embedding<float>>` (OpenAI, Azure OpenAI, Ollama,
+  LMSupply, IronHive) without an `IEmbeddingService` implementation. An asymmetric model's query side is a second
+  generator; without it the documents generator embeds queries. Batches are one generator call. The index identity is the
+  generator's provider, model id and dimension: a generator that reports no model id, or no dimension when
+  `EmbeddingGeneratorServiceOptions.Dimensions` is unset, throws at construction, and a vector of another size throws
+  when it arrives. `FluxIndex.Core` now references `Microsoft.Extensions.AI.Abstractions`.
+
+### Removed
+- **Breaking**: `IEmbeddingService.GetMaxTokens` and `CountTokensAsync` (and their `EmbeddingServiceBase` defaults) —
+  nothing in FluxIndex read them. Migration: delete those members from your implementations; an `override` of either no
+  longer compiles.
+
+### Changed
+- **Breaking**: the enrichment pipeline's `EmbeddingGenerationOptions` record is now `MultiRepresentationEmbeddingOptions`
+  (`IDocumentEnrichmentPipeline.GenerateEmbeddingsAsync`), so it no longer collides with `Microsoft.Extensions.AI`'s type
+  of that name in files importing both. Migration: rename the type where you construct it.
+
 ## [0.94.0] - 2026-10-15
 
 ### Added

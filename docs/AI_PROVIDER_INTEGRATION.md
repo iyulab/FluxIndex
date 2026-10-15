@@ -61,7 +61,7 @@ Core는 세 가지 추상 클래스를 제공합니다. 각 추상 클래스는 
 
 | Abstract Class | 반드시 구현할 멤버 | 기본 제공 기능 |
 |----------------|-----------------|---------------|
-| `EmbeddingServiceBase` | `EmbedCoreAsync()`, `GetEmbeddingDimension()`, `GetModelName()`, `GetProviderName()` | 빈 텍스트 처리, 질의 임베딩 기본 경로, 순차 배치 fallback, 토큰 추정, `GetIdentity()` |
+| `EmbeddingServiceBase` | `EmbedCoreAsync()`, `GetEmbeddingDimension()`, `GetModelName()`, `GetProviderName()` | 빈 텍스트 처리, 질의 임베딩 기본 경로, 순차 배치 fallback, `GetIdentity()` |
 | `TextCompletionServiceBase` | `CompleteCoreAsync()` | 빈 프롬프트 처리, `CompleteJsonAsync()` (JSON 지시문 추가 + 응답에서 JSON 추출) |
 | `RerankerBase` | `RerankCoreAsync()`, `GetModelInfo()` | RerankResult 변환, 점수 임계값 필터링, content 길이 제한 |
 
@@ -85,13 +85,32 @@ public interface IEmbeddingService
 
     int GetEmbeddingDimension();
     string GetModelName();
-    int GetMaxTokens();
-    Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default);
 
     // Provider + Model + Dimension (+ Revision) — 벡터 공간을 식별한다.
     EmbeddingIdentity GetIdentity();
 }
 ```
+
+### Microsoft.Extensions.AI 생성기 그대로 쓰기 (어댑터 없이)
+
+`Microsoft.Extensions.AI` 의 `IEmbeddingGenerator<string, Embedding<float>>` 가 이미 있다면(OpenAI · Azure OpenAI · Ollama ·
+LMSupply `LocalEmbeddingGenerator` · IronHive `EmbeddingGeneratorAdapter`) `IEmbeddingService` 를 구현하지 않는다.
+`IEmbeddingGenerator` 에는 질의/문서 구분이 없으므로 역할은 인스턴스가 나른다 — 비대칭 모델이면 질의 쪽 생성기를 따로 넘긴다
+(생략하면 문서 생성기가 질의도 임베딩한다):
+
+```csharp
+using FluxIndex.SDK;
+using Microsoft.Extensions.AI;
+
+var context = FluxIndexContext.CreateBuilder()
+    .UseEmbeddingGenerator(documentGenerator, queries: queryGenerator)
+    .Build();
+```
+
+인덱스 Identity 는 문서 생성기 메타데이터의 provider · model id · 차원이다. 생성기가 model id 를 알리지 않거나 차원을 알 수 없으면
+(`EmbeddingGeneratorMetadata.DefaultModelDimensions` 가 null) 생성 시 예외가 난다 — 차원은
+`configure: o => o.Dimensions = 1024` 로 준다. DI 에서는 `services.AddEmbeddingGeneratorEmbedding(queriesServiceKey: "query")` 가
+컨테이너의 생성기(질의 쪽은 keyed)를 쓴다.
 
 ### 질의/문서 역할
 
@@ -104,7 +123,7 @@ FluxIndex 는 저장하는 텍스트(문서·청크·요약)를 `GenerateEmbeddi
 
 `EmbeddingServiceBase`를 상속하면 임베딩 로직(`EmbedCoreAsync()`)과 벡터 공간을 밝히는 세 멤버
 (`GetEmbeddingDimension()`, `GetModelName()`, `GetProviderName()`)만 구현하면 됩니다. 빈 입력 처리,
-질의 경로, 배치 fallback, 토큰 추정, `GetIdentity()`는 기반 클래스가 제공합니다:
+질의 경로, 배치 fallback, `GetIdentity()`는 기반 클래스가 제공합니다:
 
 ```csharp
 using FluxIndex.Core.Application.Services.Base;
@@ -138,8 +157,6 @@ public class MyEmbeddingService : EmbeddingServiceBase
     // 선택적 오버라이드 (기본값 제공됨)
     // protected override Task<float[]> EmbedQueryCoreAsync(string query, CancellationToken cancellationToken) => ...; // 비대칭 모델의 질의 규약
     // public override Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default) => ...; // 네이티브 배치
-    // public override int GetMaxTokens() => 8192;                                       // 기본 512
-    // public override Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default) => ...; // 기본은 근사치
 }
 ```
 
@@ -256,7 +273,6 @@ public sealed class OpenAIEmbeddingService : EmbeddingServiceBase
     public override int GetEmbeddingDimension() => _dimension;
     public override string GetModelName() => _model;
     protected override string GetProviderName() => "OpenAI";
-    public override int GetMaxTokens() => 8191;
 }
 ```
 

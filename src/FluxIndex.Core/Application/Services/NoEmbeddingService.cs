@@ -49,16 +49,6 @@ public sealed class NoEmbeddingService : IEmbeddingService
     /// <summary><c>"none"</c>.</summary>
     public string GetModelName() => "none";
 
-    /// <summary>No embedder limits the input.</summary>
-    public int GetMaxTokens() => int.MaxValue;
-
-    /// <summary>An estimate from the word count (about 0.75 words per token), as there is no tokenizer.</summary>
-    public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default)
-    {
-        var words = string.IsNullOrWhiteSpace(text) ? 0 : text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-        return Task.FromResult((int)Math.Ceiling(words / 0.75));
-    }
-
     /// <summary>There is no vector space, so there is no identity: throws, like the embedding calls.</summary>
     public EmbeddingIdentity GetIdentity() => throw new InvalidOperationException(NotConfiguredMessage);
 }

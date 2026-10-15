@@ -153,51 +153,6 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
 
     #endregion
 
-    #region Base class methods (GetMaxTokens, CountTokensAsync)
-
-    [Fact]
-    public void GetMaxTokens_ReturnsDefault512()
-    {
-        _service.GetMaxTokens().Should().Be(512);
-    }
-
-    [Fact]
-    public async Task CountTokensAsync_EnglishText_ReturnsEstimate()
-    {
-        // "hello world" = 11 chars, ~11/4 + 2 = 4 tokens
-        var count = await _service.CountTokensAsync("hello world", TestContext.Current.CancellationToken);
-
-        count.Should().BeGreaterThan(0);
-    }
-
-    [Fact]
-    public async Task CountTokensAsync_EmptyText_ReturnsZero()
-    {
-        var count = await _service.CountTokensAsync("", TestContext.Current.CancellationToken);
-
-        count.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task CountTokensAsync_CjkText_CountsPerCharacter()
-    {
-        // Korean: 5 Hangul chars -> 5 CJK tokens + 2 special = 7
-        var count = await _service.CountTokensAsync("안녕하세요", TestContext.Current.CancellationToken);
-
-        count.Should().Be(7);
-    }
-
-    [Fact]
-    public async Task CountTokensAsync_MixedText_HandlesBoth()
-    {
-        // "Hello 세계" = 6 non-CJK chars + 2 CJK chars
-        var count = await _service.CountTokensAsync("Hello 세계", TestContext.Current.CancellationToken);
-
-        count.Should().BeGreaterThan(0);
-    }
-
-    #endregion
-
     #region Query/passage roles and prefixes (0.69.0)
 
     private static IEmbeddingModel ModelWithPrefixes(string? query, string? passage)

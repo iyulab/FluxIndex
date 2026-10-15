@@ -55,7 +55,7 @@ public partial class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
             if (options.GenerateContentEmbedding || options.GenerateContextualEmbedding ||
                 options.GenerateHypotheticalEmbedding || options.GenerateSummaryEmbedding)
             {
-                var embeddingOptions = new EmbeddingGenerationOptions
+                var embeddingOptions = new MultiRepresentationEmbeddingOptions
                 {
                     GenerateContentEmbedding = options.GenerateContentEmbedding,
                     GenerateSummaryEmbedding = options.GenerateSummaryEmbedding,
@@ -219,10 +219,10 @@ public partial class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
     /// <inheritdoc />
     public async Task<MultiRepresentationEmbeddings> GenerateEmbeddingsAsync(
         string content,
-        EmbeddingGenerationOptions? options = null,
+        MultiRepresentationEmbeddingOptions? options = null,
         CancellationToken ct = default)
     {
-        options ??= new EmbeddingGenerationOptions();
+        options ??= new MultiRepresentationEmbeddingOptions();
 
         float[]? contentEmb = null;
         float[]? summaryEmb = null;

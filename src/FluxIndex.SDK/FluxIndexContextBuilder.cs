@@ -269,6 +269,28 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
+    /// Uses <c>Microsoft.Extensions.AI</c> embedding generators — any <c>IEmbeddingGenerator&lt;string, Embedding&lt;float&gt;&gt;</c>
+    /// (OpenAI, Azure OpenAI, Ollama, LMSupply, IronHive) — without writing an <see cref="IEmbeddingService"/>.
+    /// </summary>
+    /// <param name="documents">Embeds stored text.</param>
+    /// <param name="queries">
+    /// Embeds search queries — an asymmetric model's query side (E5 <c>query: </c>, BGE or Qwen3 query instruction).
+    /// Null embeds queries with <paramref name="documents"/>.
+    /// </param>
+    /// <param name="configure">Dimension (when the generator does not report one) and revisions.</param>
+    /// <exception cref="ArgumentException">The generator reports no model id, or no dimension is known.</exception>
+    public FluxIndexContextBuilder UseEmbeddingGenerator(
+        Microsoft.Extensions.AI.IEmbeddingGenerator<string, Microsoft.Extensions.AI.Embedding<float>> documents,
+        Microsoft.Extensions.AI.IEmbeddingGenerator<string, Microsoft.Extensions.AI.Embedding<float>>? queries = null,
+        Action<EmbeddingGeneratorServiceOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(documents);
+        var options = new EmbeddingGeneratorServiceOptions();
+        configure?.Invoke(options);
+        return UseEmbeddingService(new EmbeddingGeneratorEmbeddingService(documents, queries, options));
+    }
+
+    /// <summary>
     /// Redis 캐시 사용.
     /// NOTE: Requires FluxIndex.Cache.Redis package reference.
     /// </summary>

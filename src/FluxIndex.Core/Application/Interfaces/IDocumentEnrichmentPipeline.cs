@@ -36,7 +36,7 @@ public interface IDocumentEnrichmentPipeline
     /// </summary>
     Task<MultiRepresentationEmbeddings> GenerateEmbeddingsAsync(
         string content,
-        EmbeddingGenerationOptions? options = null,
+        MultiRepresentationEmbeddingOptions? options = null,
         CancellationToken ct = default);
 
     /// <summary>
@@ -171,9 +171,9 @@ public record EnrichmentOptions
 }
 
 /// <summary>
-/// Options for embedding generation.
+/// Which representations <see cref="IDocumentEnrichmentPipeline.GenerateEmbeddingsAsync"/> embeds.
 /// </summary>
-public record EmbeddingGenerationOptions
+public record MultiRepresentationEmbeddingOptions
 {
     /// <summary>Generate content embeddings</summary>
     public bool GenerateContentEmbedding { get; init; } = true;

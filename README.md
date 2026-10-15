@@ -21,6 +21,12 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   It runs `DirectVector`, `KeywordOnly`, `Hybrid`, `MultiQuery` or `TwoStage`; a forced strategy outside that set runs as
   `Hybrid`. `AdaptiveSearchResult.UsedStrategy` is the strategy that produced the results (after any fallback),
   `SelectedStrategy` the one chosen before it ran.
+- **Any `Microsoft.Extensions.AI` embedding generator** — builder `UseEmbeddingGenerator(documents, queries)` (or
+  `services.AddEmbeddingGeneratorEmbedding(queriesServiceKey)` in DI) takes an `IEmbeddingGenerator<string, Embedding<float>>`
+  — OpenAI, Azure OpenAI, Ollama, LMSupply, IronHive — with no `IEmbeddingService` to write. The query side of an
+  asymmetric model is a second generator (omit it for a symmetric model). The index identity is the generator's provider,
+  model id and dimension; a generator that reports no model id, or no dimension and none set
+  (`EmbeddingGeneratorServiceOptions.Dimensions`), fails at construction.
 - **Batch indexing** — `Indexer.IndexBatchAsync(documents, progress, parallelism)`; chunk embeddings go through
   `IEmbeddingService.GenerateEmbeddingsBatchAsync`. A document that cannot be indexed does not stop the batch, and is not
   dropped silently: the others are written, then `BatchIndexingException` names each one left out (`Failures`) and the
@@ -177,7 +183,7 @@ Without a registered `IEmbeddingService` the context is **keyword-only** (`conte
 - Vector search (`SearchAsync`) throws `InvalidOperationException` and names how to add an embedder.
 - A keyword-only context needs a store that keeps chunks without vectors: SQLite or sqlite-vec (no vector table is
   created until an embedder is bound), or in-memory. Qdrant and PostgreSQL keep vectors only and refuse such chunks.
-- Register an embedder with `UseEmbeddingService(...)`, a provider package, or `ConfigureServices`. For tests,
+- Register an embedder with `UseEmbeddingGenerator(...)`, `UseEmbeddingService(...)`, a provider package, or `ConfigureServices`. For tests,
   `UseInMemoryEmbedding()` gives deterministic vectors that are **not semantically meaningful**.
 - An embedder added later fills the vectors of chunks indexed without one: `await context.Indexer.BackfillEmbeddingsAsync(documentId)`
   embeds only the chunks that have no vector and leaves their content and keyword entries as they are.

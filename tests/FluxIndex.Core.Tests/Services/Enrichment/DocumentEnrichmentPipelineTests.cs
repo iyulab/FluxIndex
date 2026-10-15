@@ -395,7 +395,7 @@ public class DocumentEnrichmentPipelineTests
     {
         // Arrange
         var pipeline = CreatePipeline();
-        var options = new EmbeddingGenerationOptions
+        var options = new MultiRepresentationEmbeddingOptions
         {
             GenerateContentEmbedding = true,
             GenerateSummaryEmbedding = false,
@@ -415,7 +415,7 @@ public class DocumentEnrichmentPipelineTests
     {
         // Arrange
         var pipeline = CreatePipeline();
-        var options = new EmbeddingGenerationOptions
+        var options = new MultiRepresentationEmbeddingOptions
         {
             GenerateContentEmbedding = true,
             GenerateSummaryEmbedding = true,

@@ -71,16 +71,6 @@ public class InMemoryEmbeddingService : IEmbeddingService
         Dimension = _dimensions
     };
 
-    public int GetMaxTokens() => 8192; // Arbitrary high value for testing
-
-    public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default)
-    {
-        // Simple word count approximation (1 token ≈ 0.75 words)
-        var wordCount = text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
-        var tokenCount = (int)(wordCount / 0.75);
-        return Task.FromResult(tokenCount);
-    }
-
     /// <summary>
     /// Process-stable 32-bit FNV-1a hash over the text's UTF-8 bytes.
     /// Used as the embedding seed so "same text → same vector" holds across

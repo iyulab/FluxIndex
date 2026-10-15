@@ -22,6 +22,8 @@
     <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.13" />
+    <!-- AI abstractions (the platform embedding port, #1292) -->
+    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.11.0" />
     <!-- DI -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.13" />

@@ -179,8 +179,6 @@ public sealed class BatchIndexingWritesOnceTests : IDisposable
 
         public int GetEmbeddingDimension() => 3;
         public string GetModelName() => "failing-test-embedder";
-        public int GetMaxTokens() => 512;
-        public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default) => Task.FromResult(text.Length);
         public FluxIndex.Core.Domain.ValueObjects.EmbeddingIdentity GetIdentity() => new() { Provider = "Test", Model = "failing-test-embedder", Dimension = 3 };
     }
 

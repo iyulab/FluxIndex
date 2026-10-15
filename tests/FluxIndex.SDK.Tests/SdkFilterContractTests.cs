@@ -105,11 +105,8 @@ public class SdkFilterContractTests
             => Task.FromResult(new[] { 1.0f, 0.0f, 0.0f });
         public Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default)
             => Task.FromResult(texts.Select(_ => new[] { 1.0f, 0.0f, 0.0f }));
-        public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default)
-            => Task.FromResult(text.Length / 4);
         public int GetEmbeddingDimension() => 3;
         public string GetModelName() => "test-constant";
-        public int GetMaxTokens() => 512;
         public EmbeddingIdentity GetIdentity()
             => new() { Provider = "Test", Model = "test-constant", Dimension = 3 };
     }

@@ -132,8 +132,6 @@ public class EmbeddingRoleContractTests : IDisposable
 
         public int GetEmbeddingDimension() => 4;
         public string GetModelName() => "test-roles";
-        public int GetMaxTokens() => 512;
-        public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default) => Task.FromResult(text.Length / 4);
         public EmbeddingIdentity GetIdentity() => new() { Provider = "Test", Model = "test-roles", Dimension = 4 };
 
         private static float[] Axis(int i)
@@ -152,8 +150,6 @@ public class EmbeddingRoleContractTests : IDisposable
             Task.FromResult(texts.Select(t => new[] { t.Length, 1f, 0f }));
         public int GetEmbeddingDimension() => 3;
         public string GetModelName() => "test-symmetric";
-        public int GetMaxTokens() => 512;
-        public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default) => Task.FromResult(1);
         public EmbeddingIdentity GetIdentity() => new() { Provider = "Test", Model = "test-symmetric", Dimension = 3 };
     }
 }

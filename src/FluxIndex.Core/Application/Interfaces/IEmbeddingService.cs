@@ -40,8 +40,6 @@ public interface IEmbeddingService
 
     int GetEmbeddingDimension();
     string GetModelName();
-    int GetMaxTokens();
-    Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 이 서비스가 생성하는 임베딩의 Identity를 반환한다.

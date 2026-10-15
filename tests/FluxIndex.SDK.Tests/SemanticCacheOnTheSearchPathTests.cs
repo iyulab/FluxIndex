@@ -265,11 +265,8 @@ public class SemanticCacheOnTheSearchPathTests
             => Task.FromResult(Vector.ToArray());
         public Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default)
             => Task.FromResult(texts.Select(_ => Vector.ToArray()));
-        public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default)
-            => Task.FromResult(text.Length / 4);
         public int GetEmbeddingDimension() => Vector.Length;
         public string GetModelName() => "test-constant";
-        public int GetMaxTokens() => 512;
         public EmbeddingIdentity GetIdentity() => new() { Provider = "Test", Model = "test-constant", Dimension = Vector.Length };
     }
 }

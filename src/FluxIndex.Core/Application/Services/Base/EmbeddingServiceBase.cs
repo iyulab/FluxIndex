@@ -129,33 +129,4 @@ public abstract class EmbeddingServiceBase : IEmbeddingService
         Revision = GetRevision(),
         VectorSpaceRevision = GetVectorSpaceRevision()
     };
-
-    /// <inheritdoc />
-    /// <remarks>Default: 512 tokens. Override if your model has different limits.</remarks>
-    public virtual int GetMaxTokens() => 512;
-
-    /// <inheritdoc />
-    /// <remarks>
-    /// Default: rough approximation (length / 4 for English, 1:1 for CJK).
-    /// Override for accurate tokenization if your provider has a tokenizer.
-    /// </remarks>
-    public virtual Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrEmpty(text))
-            return Task.FromResult(0);
-
-        // Rough approximation: CJK = 1 token per char, others = 4 chars per token
-        var cjkCount = text.Count(IsCjkCharacter);
-        var otherCount = text.Length - cjkCount;
-        var tokenCount = cjkCount + (otherCount / 4) + 2; // +2 for special tokens
-
-        return Task.FromResult(tokenCount);
-    }
-
-    private static bool IsCjkCharacter(char c) =>
-        (c >= '\u4E00' && c <= '\u9FFF') ||   // CJK Unified Ideographs
-        (c >= '\u3400' && c <= '\u4DBF') ||   // CJK Extension A
-        (c >= '\uAC00' && c <= '\uD7AF') ||   // Hangul Syllables
-        (c >= '\u3040' && c <= '\u309F') ||   // Hiragana
-        (c >= '\u30A0' && c <= '\u30FF');     // Katakana
 }

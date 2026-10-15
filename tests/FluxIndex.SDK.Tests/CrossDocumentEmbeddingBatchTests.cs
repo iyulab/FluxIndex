@@ -98,8 +98,6 @@ public sealed class CrossDocumentEmbeddingBatchTests : IDisposable
 
         public int GetEmbeddingDimension() => 3;
         public string GetModelName() => "counting-test-embedder";
-        public int GetMaxTokens() => 512;
-        public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default) => Task.FromResult(text.Length);
         public EmbeddingIdentity GetIdentity() => new() { Provider = "Test", Model = "counting-test-embedder", Dimension = 3 };
     }
 

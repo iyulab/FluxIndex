@@ -162,9 +162,13 @@ public class DocsSnippetCompileTests
 
     private static readonly Document[] Documents =
     [
-        new("docs/AI_PROVIDER_INTEGRATION.md", 19, 3,
+        new("docs/AI_PROVIDER_INTEGRATION.md", 20, 3,
             ["FluxIndex.Core.Application.Interfaces", "Microsoft.Extensions.DependencyInjection"],
-            StandIns(CommonStandIns)),
+            StandIns(CommonStandIns,
+            [
+                StandIn("Microsoft.Extensions.AI.IEmbeddingGenerator<string, Microsoft.Extensions.AI.Embedding<float>>", "documentGenerator"),
+                StandIn("Microsoft.Extensions.AI.IEmbeddingGenerator<string, Microsoft.Extensions.AI.Embedding<float>>", "queryGenerator"),
+            ])),
         // The packages its Installation section adds, and the contracts every block speaks in; a block that needs an
         // extension namespace beyond those says so itself.
         new("docs/GUIDE.md", 26, 0,
@@ -236,8 +240,6 @@ public class DocsSnippetCompileTests
                         public Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<float[]>());
                         public int GetEmbeddingDimension() => 0;
                         public string GetModelName() => "";
-                        public int GetMaxTokens() => 0;
-                        public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default) => Task.FromResult(0);
                         public FluxIndex.Core.Domain.ValueObjects.EmbeddingIdentity GetIdentity() => default!;
                     }
                     """),
