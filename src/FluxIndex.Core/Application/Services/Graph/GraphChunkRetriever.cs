@@ -317,7 +317,9 @@ public sealed partial class GraphChunkRetriever : IGraphChunkRetriever
     [LoggerMessage(Level = LogLevel.Debug, Message = "Graph retrieval: no stored entity matched {CandidateCount} name candidates")]
     private static partial void LogNoSeed(ILogger logger, int candidateCount);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Graph retrieval: traversal from seed {SeedId} stopped at {MaxNodes} entities (GraphRetrievalOptions.MaxNodesPerSeed)")]
+    // Debug, not Warning: on a dense graph (sentence co-occurrence) a hub entity reaches the bound on most queries — measured on
+    // MultiHop-RAG, nearly every hops-1 query logged it — and the bound is the configured behaviour, not a fault.
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Graph retrieval: traversal from seed {SeedId} stopped at {MaxNodes} entities (GraphRetrievalOptions.MaxNodesPerSeed)")]
     private static partial void LogTraversalTruncated(ILogger logger, string seedId, int maxNodes);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Graph retrieval: {SeedCount} seeds, {EntityCount} entities reached, {CandidateCount} chunk candidates, {HitCount} hits in scope")]
