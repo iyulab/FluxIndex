@@ -7,6 +7,10 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Documentation
+- **The README states the SQLite stores' measured search latency**: full scan p50 6.6 s vs sqlite-vec 45 ms over 43,293
+  vectors (identical top 10), with the guidance to use sqlite-vec past a few thousand chunks.
+
 ### Fixed
 - **Breaking: a Qdrant collection named without the model refuses a switched model after a restart too.** With
   `CollectionNamingStrategy.Fixed`, the store records the bound embedding identity (provider, model, dimension, revision)

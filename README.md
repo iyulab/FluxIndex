@@ -310,6 +310,11 @@ for the tool parameters and embedding configuration.
 sqlite-vec store is registered with `services.AddSQLiteVecVectorStore(databasePath, vectorDimension)` (or the
 `SQLiteVecOptions` overload).
 
+Measured search latency over 43,293 passage vectors (1024-d, top 10, the same vectors in both stores, one query at a
+time on a desktop CPU): the full-scan store **p50 6.6 s** (it reads and compares every vector in .NET, so time grows with
+the corpus — 1.5 s at 8,704 vectors), sqlite-vec **p50 45 ms** (p95 73 ms) with the identical top 10. Use sqlite-vec
+for anything past a few thousand chunks; the full-scan store is for small or test indexes.
+
 Metadata filtering (`SearchAsync(..., filter:)`) is honored by **every** store — stores without
 native pushdown fall back to a correctness backstop applied before the topK trim. Native pushdown
 matters for recall/performance at scale:
