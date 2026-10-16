@@ -7,6 +7,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Added
+- **Read which embedding identity a vector store's index was written with: `IVectorStore.GetRecordedIdentityAsync()`.**
+  It returns the recorded provider, model, dimension and revision from the store itself, so a fresh instance — a restarted
+  process, a copied data folder, a restored backup — answers too, and a consumer no longer needs a side file to know
+  whether the index matches its configured model. The PostgreSQL, plain SQLite and Qdrant (`Fixed`) stores return the
+  record they already keep. `SQLiteVecVectorStore` now records the identity of its latest vector write (single or batch)
+  in the same `fluxindex_vector_identity` table (row `vec0`), and `ClearAsync` removes it; a switched model is still given
+  its own fingerprinted table, not refused. The in-memory store and stores that record nothing return null, which is also
+  the interface default.
+
 ### Dependencies
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.22.1 -> 0.23.0.
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.23.0 -> 0.23.1.

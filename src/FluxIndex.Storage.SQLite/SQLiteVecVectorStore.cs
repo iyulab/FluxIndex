@@ -195,6 +195,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     if (chunk.Embedding != null && VecTableActive)
                     {
                         await context.StoreVectorInVecTableAsync(id, chunk.Embedding, cancellationToken);
+                        await RecordBoundIdentityAsync(context, cancellationToken);
                     }
                     else if (existing != null && VecTableActive)
                     {
@@ -529,6 +530,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         if (vectorBatch.Count != 0)
         {
             await StoreBatchVectorsAsync(context, vectorBatch, cancellationToken);
+            if (vectorBatch.Count > 0 && VecTableActive)
+                await RecordBoundIdentityAsync(context, cancellationToken);
         }
 
         return ids;
@@ -1838,6 +1841,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                     // 메타데이터 테이블 클리어
                     context.VectorChunks.RemoveRange(context.VectorChunks.AsTracking());
+                    await EnsureIdentityTableAsync(context, cancellationToken);
+                    await context.Database.ExecuteSqlAsync(
+                        $"DELETE FROM fluxindex_vector_identity WHERE store_key = {IdentityStoreKey}", cancellationToken);
                     await context.SaveChangesAsync(cancellationToken);
                     await transaction.CommitAsync(cancellationToken);
 
@@ -2031,6 +2037,46 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     /// (pooled) connection, so vec0 SQL run without this would fail — or, on the delete paths that
     /// tolerate a vec0 error, leave the vector behind.
     /// </summary>
+    /// <summary>The <c>fluxindex_vector_identity</c> row of this store (the plain SQLite store uses <c>vectors</c>).</summary>
+    private const string IdentityStoreKey = "vec0";
+
+    private static Task<int> EnsureIdentityTableAsync(SQLiteVecDbContext context, CancellationToken cancellationToken) =>
+        context.Database.ExecuteSqlRawAsync(
+            "CREATE TABLE IF NOT EXISTS fluxindex_vector_identity (store_key TEXT PRIMARY KEY, identity_record TEXT NOT NULL)",
+            cancellationToken);
+
+    /// <summary>
+    /// Records the bound identity as the one the index was last written with, in the transaction that writes the vectors.
+    /// A switched model is not refused here — its vectors go to its own fingerprinted table — the record only says which.
+    /// </summary>
+    private async Task RecordBoundIdentityAsync(SQLiteVecDbContext context, CancellationToken cancellationToken)
+    {
+        if (_boundIdentity is not { } bound)
+            return;
+
+        await EnsureIdentityTableAsync(context, cancellationToken);
+        var record = EmbeddingIdentityRecord.Format(bound);
+        await context.Database.ExecuteSqlAsync(
+            $"INSERT INTO fluxindex_vector_identity (store_key, identity_record) VALUES ({IdentityStoreKey}, {record}) ON CONFLICT (store_key) DO UPDATE SET identity_record = excluded.identity_record",
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The identity of the most recent vector write (single or batch) under a bound identity; null before any, and after
+    /// <see cref="ClearAsync"/>. An index written before the store kept this record reads null until its next write.
+    /// </remarks>
+    public async Task<EmbeddingIdentity?> GetRecordedIdentityAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await EnsureIdentityTableAsync(context, cancellationToken);
+        var record = await context.Database
+            .SqlQuery<string>($"SELECT identity_record AS \"Value\" FROM fluxindex_vector_identity WHERE store_key = {IdentityStoreKey}")
+            .FirstOrDefaultAsync(cancellationToken);
+        return EmbeddingIdentityRecord.Parse(record);
+    }
+
     private async Task<SQLiteVecDbContext> OpenContextAsync(CancellationToken cancellationToken)
     {
         var context = await _contextFactory.CreateDbContextAsync(cancellationToken);

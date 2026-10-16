@@ -254,6 +254,9 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
 
     public void BindIdentity(EmbeddingIdentity identity) => _innerStore.BindIdentity(identity);
 
+    public Task<EmbeddingIdentity?> GetRecordedIdentityAsync(CancellationToken cancellationToken = default)
+        => _innerStore.GetRecordedIdentityAsync(cancellationToken);
+
     public Task<bool> VerifyHealthAsync(CancellationToken cancellationToken = default)
         => _innerStore.VerifyHealthAsync(cancellationToken);
 

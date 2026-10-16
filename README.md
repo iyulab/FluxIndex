@@ -30,7 +30,11 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   (`EmbeddingGeneratorServiceOptions.Dimensions`), throws. The store is bound to the identity on each use: Qdrant refuses
   a model switched under its index, across restarts too (it records the identity in the collection metadata;
   `EmbeddingModelMismatchException` — re-index, or use `ModelFingerprint` collection naming), sqlite-vec gives a new model its own table; the PostgreSQL and plain SQLite stores record the identity in a
-  `fluxindex_vector_identity` table and refuse another model from any later scope or process.
+  `fluxindex_vector_identity` table and refuse another model from any later scope or process. Ask a store which identity
+  its vectors were written with — `await vectorStore.GetRecordedIdentityAsync()` (provider, model, dimension, revision;
+  null when nothing is recorded) — and compare it with your embedding service's `GetIdentity()` to tell whether the index
+  was built with the configured model. sqlite-vec records the identity of its latest write (a switched model is not
+  refused there, so the record says which table is current); Qdrant answers for a `Fixed` collection.
 - **Batch indexing** — `Indexer.IndexBatchAsync(documents, progress, parallelism)`; chunk embeddings go through
   `IEmbeddingService.GenerateEmbeddingsBatchAsync`. A document that cannot be indexed does not stop the batch, and is not
   dropped silently: the others are written, then `BatchIndexingException` names each one left out (`Failures`) and the

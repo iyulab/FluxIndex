@@ -257,6 +257,18 @@ public interface IVectorStore
     void BindIdentity(EmbeddingIdentity identity) { }
 
     /// <summary>
+    /// The embedding identity this store has recorded for the vectors it holds — provider, model, dimension and revision
+    /// of the model they were last written with — read from the store itself, so a fresh instance (a restarted process,
+    /// a copied data folder) answers too. Null when the store records no identity, or has recorded none yet.
+    /// </summary>
+    /// <remarks>
+    /// Compare it with the identity your embedding service reports to tell whether the index was built with the
+    /// configured model. Default implementation: null (a store that records nothing).
+    /// </remarks>
+    Task<EmbeddingIdentity?> GetRecordedIdentityAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<EmbeddingIdentity?>(null);
+
+    /// <summary>
     /// Verifies that the vector store is operational by testing a write+delete cycle.
     /// Returns false if the store is corrupted and attempts self-healing.
     /// </summary>

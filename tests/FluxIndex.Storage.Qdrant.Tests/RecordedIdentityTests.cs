@@ -101,6 +101,22 @@ public class RecordedIdentityTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AFreshInstance_ReadsTheRecordedIdentity()
+    {
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
+        var ct = TestContext.Current.CancellationToken;
+        var collection = $"identity_{Guid.NewGuid():N}";
+        await using (var before = Store(collection, identity: null))
+            (await before.GetRecordedIdentityAsync(ct)).Should().BeNull();
+        await using (var first = Store(collection, Model("model-a")))
+            await first.StoreAsync(Chunk(), ct);
+
+        await using var restarted = Store(collection, identity: null);
+
+        (await restarted.GetRecordedIdentityAsync(ct)).Should().Be(Model("model-a"));
+    }
+
+    [Fact]
     public async Task AFreshInstanceBoundToTheSameModel_Works()
     {
         Assert.SkipUnless(IsDockerAvailable, "Docker is not available");

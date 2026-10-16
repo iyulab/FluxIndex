@@ -94,6 +94,15 @@ public sealed class RecordedIdentityTests : IDisposable
         (await next.CountAsync(Ct)).Should().Be(1);
     }
 
+    [Fact]
+    public async Task AFreshInstance_ReadsTheRecordedIdentity()
+    {
+        (await Store(Model("model-a")).GetRecordedIdentityAsync(Ct)).Should().BeNull();
+        await Store(Model("model-a")).StoreAsync(Chunk(), Ct);
+
+        (await Store(identity: null).GetRecordedIdentityAsync(Ct)).Should().Be(Model("model-a"));
+    }
+
     public void Dispose()
     {
         foreach (var provider in _providers)

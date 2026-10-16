@@ -141,6 +141,10 @@ public abstract partial class VectorStoreBase : IVectorStore
         _identityVerified = false;
     }
 
+    /// <inheritdoc />
+    public async Task<EmbeddingIdentity?> GetRecordedIdentityAsync(CancellationToken cancellationToken = default) =>
+        EmbeddingIdentityRecord.Parse(await ReadRecordedIdentityAsync(cancellationToken));
+
     /// <summary>
     /// The identity recorded in the store (<see cref="EmbeddingIdentityRecord"/> form), or null when there is none. The
     /// default records nothing: such a store guards its identity within one instance only.

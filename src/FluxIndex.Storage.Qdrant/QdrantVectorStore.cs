@@ -171,6 +171,35 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
     /// <summary>The collection metadata key under which the embedding identity of the stored vectors is recorded.</summary>
     internal const string IdentityMetadataKey = "fluxindex_embedding_identity";
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// The record in the collection's metadata: written with <see cref="CollectionNamingStrategy.Fixed"/> when an identity
+    /// is bound (a collection named by <see cref="CollectionNamingStrategy.ModelFingerprint"/> carries the identity in its
+    /// name and has none). Null when the collection does not exist, has no record, or — with
+    /// <see cref="CollectionNamingStrategy.ModelFingerprint"/> — no identity is bound to name it.
+    /// </remarks>
+    public async Task<EmbeddingIdentity?> GetRecordedIdentityAsync(CancellationToken cancellationToken = default)
+    {
+        var collectionName = _resolvedCollectionName ?? _options.NamingStrategy switch
+        {
+            CollectionNamingStrategy.ModelFingerprint when _boundIdentity is not null
+                => $"{_options.BaseCollectionName}_{_boundIdentity.Fingerprint}",
+            CollectionNamingStrategy.ModelFingerprint => null,
+            _ => _options.BaseCollectionName
+        };
+        if (collectionName is null)
+            return null;
+
+        var collections = await _client.ListCollectionsAsync(cancellationToken);
+        if (!collections.Any(c => c == collectionName))
+            return null;
+
+        var info = await _client.GetCollectionInfoAsync(collectionName, cancellationToken);
+        return info.Config?.Metadata is { } metadata && metadata.TryGetValue(IdentityMetadataKey, out var value)
+            ? RecordedIdentity.Parse(value.StringValue)
+            : null;
+    }
+
     /// <summary>
     /// Compares the embedding identity recorded in the collection's metadata with the bound one, so a model switched
     /// under an existing collection is refused across restarts, not only within one process.
