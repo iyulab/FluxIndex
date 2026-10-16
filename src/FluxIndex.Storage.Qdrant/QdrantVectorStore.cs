@@ -498,6 +498,8 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
             ["token_count"] = chunk.TokenCount,
             ["created_at"] = chunk.CreatedAt.ToString("O")
         };
+        if (chunk.VectorSpaceRevision is { } revision)
+            payload[VectorSpaceRevisionPayloadKey] = revision;
 
         // Add custom properties
         foreach (var prop in chunk.Properties)
@@ -683,7 +685,8 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
             ChunkIndex = GetPayloadInt(payload, "chunk_index"),
             TotalChunks = GetPayloadInt(payload, "total_chunks"),
             TokenCount = GetPayloadInt(payload, "token_count"),
-            CreatedAt = GetPayloadDateTime(payload, "created_at")
+            CreatedAt = GetPayloadDateTime(payload, "created_at"),
+            VectorSpaceRevision = payload.TryGetValue(VectorSpaceRevisionPayloadKey, out var revision) && revision.HasStringValue ? revision.StringValue : null
         };
 
         // Extract embedding from vectors
@@ -847,7 +850,8 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
             ChunkIndex = GetPayloadInt(payload, "chunk_index"),
             TotalChunks = GetPayloadInt(payload, "total_chunks"),
             TokenCount = GetPayloadInt(payload, "token_count"),
-            CreatedAt = GetPayloadDateTime(payload, "created_at")
+            CreatedAt = GetPayloadDateTime(payload, "created_at"),
+            VectorSpaceRevision = payload.TryGetValue(VectorSpaceRevisionPayloadKey, out var revision) && revision.HasStringValue ? revision.StringValue : null
         };
 
         // Extract embedding from vectors if present
@@ -1101,6 +1105,51 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
     #endregion
 
     #region Count/Clear Operations
+
+    /// <summary>The payload key holding the vector-space revision a point's vector was computed in (absent when none was reported).</summary>
+    private const string VectorSpaceRevisionPayloadKey = "vector_space_revision";
+
+    /// <summary>Points whose recorded revision is not <paramref name="vectorSpaceRevision"/> — including points written without one.</summary>
+    private static Filter OutsideSpaceFilter(string vectorSpaceRevision) => new()
+    {
+        MustNot =
+        {
+            new Condition
+            {
+                Field = new FieldCondition
+                {
+                    Key = VectorSpaceRevisionPayloadKey,
+                    Match = new Match { Keyword = vectorSpaceRevision }
+                }
+            }
+        }
+    };
+
+    /// <inheritdoc />
+    /// <remarks>Every point of a collection holds a vector, so every point whose revision differs or was never recorded counts.</remarks>
+    public async Task<int?> CountVectorsOutsideSpaceAsync(string vectorSpaceRevision, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(vectorSpaceRevision);
+        await EnsureCollectionAsync(cancellationToken);
+        return (int)await _client.CountAsync(
+            _resolvedCollectionName!, OutsideSpaceFilter(vectorSpaceRevision), exact: true, cancellationToken: cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>?> GetChunkIdsOutsideSpaceAsync(string vectorSpaceRevision, int limit, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(vectorSpaceRevision);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+        await EnsureCollectionAsync(cancellationToken);
+        var response = await _client.ScrollAsync(
+            collectionName: _resolvedCollectionName!,
+            filter: OutsideSpaceFilter(vectorSpaceRevision),
+            limit: (uint)limit,
+            payloadSelector: new WithPayloadSelector { Include = new PayloadIncludeSelector { Fields = { ChunkIdPayloadKey } } },
+            vectorsSelector: false,
+            cancellationToken: cancellationToken);
+        return response.Result.Select(p => ChunkIdFromPayload(p.Payload) ?? p.Id.Uuid).ToList();
+    }
 
     public async Task<int> CountAsync(CancellationToken cancellationToken = default)
     {

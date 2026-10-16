@@ -12,8 +12,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   embedding library computes different vectors for the same model id (a new `EmbeddingIdentity.VectorSpaceRevision`), a
   consumer re-embeds in place; until now no store kept the revision a vector was computed in, so an interrupted re-embed
   could not be told from a finished one without a side file. `DocumentChunk.VectorSpaceRevision` is now set by the indexer
-  right after embedding and kept by the in-memory and sqlite-vec stores (a sibling table `fluxindex_vector_space`, so
-  existing vec0 tables need no change). `IVectorStore.CountVectorsOutsideSpaceAsync(revision)` and
+  right after embedding and kept by the in-memory, sqlite-vec (a sibling table `fluxindex_vector_space`, so existing vec0
+  tables need no change), plain SQLite and PostgreSQL (a nullable `VectorSpaceRevision` column, added to an existing table
+  in place) and Qdrant (payload `vector_space_revision`) stores. `IVectorStore.CountVectorsOutsideSpaceAsync(revision)` and
   `GetChunkIdsOutsideSpaceAsync(revision, limit)` answer from the store (null from a store that does not keep revisions —
   the interface default); `Indexer.CountVectorsOutsideCurrentSpaceAsync()` and `Indexer.ReembedOutsideCurrentSpaceAsync(batchSize)`
   use the embedder's current revision, and the re-embed writes batch by batch so calling it again continues. A vector written

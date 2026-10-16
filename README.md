@@ -40,8 +40,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   computed in (`DocumentChunk.VectorSpaceRevision`, set by the indexer). `await context.Indexer.CountVectorsOutsideCurrentSpaceAsync()`
   tells how many are not in the embedder's current revision — 0 means a re-embed finished, even after a restart — and
   `await context.Indexer.ReembedOutsideCurrentSpaceAsync(batchSize)` re-embeds only those, in place, writing each batch before
-  the next so a call cut short continues where it stopped. Stores: in-memory and sqlite-vec (`IVectorStore.CountVectorsOutsideSpaceAsync`
-  / `GetChunkIdsOutsideSpaceAsync`; a store that does not keep revisions answers null). Vectors written before a store kept
+  the next so a call cut short continues where it stopped. Stores: in-memory, sqlite-vec, plain SQLite, PostgreSQL and Qdrant
+  (`IVectorStore.CountVectorsOutsideSpaceAsync` / `GetChunkIdsOutsideSpaceAsync`; the quantized stores and a custom store
+  that does not keep revisions answer null). Vectors written before a store kept
   revisions count as outside.
 - **Batch indexing** — `Indexer.IndexBatchAsync(documents, progress, parallelism)`; chunk embeddings go through
   `IEmbeddingService.GenerateEmbeddingsBatchAsync`. A document that cannot be indexed does not stop the batch, and is not

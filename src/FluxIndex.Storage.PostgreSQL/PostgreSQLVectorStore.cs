@@ -109,6 +109,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
                 TotalChunks = chunk.TotalChunks,
                 Content = chunk.Content,
                 Embedding = embedding,
+                VectorSpaceRevision = chunk.Embedding is null ? null : chunk.VectorSpaceRevision,
                 TokenCount = chunk.TokenCount,
                 Metadata = metadata
             });
@@ -120,6 +121,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
             existing.TotalChunks = chunk.TotalChunks;
             existing.Content = chunk.Content;
             existing.Embedding = embedding;
+            existing.VectorSpaceRevision = chunk.Embedding is null ? null : chunk.VectorSpaceRevision;
             existing.TokenCount = chunk.TokenCount;
             existing.Metadata = metadata;
         }
@@ -240,6 +242,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
 
         entity.Content = chunk.Content;
         entity.Embedding = chunk.Embedding is not null ? new Vector(chunk.Embedding.ToArray()) : new Vector(Array.Empty<float>());
+        entity.VectorSpaceRevision = chunk.Embedding is null ? null : chunk.VectorSpaceRevision;
         entity.TokenCount = chunk.TokenCount;
         entity.Metadata = chunk.Metadata ?? new();
 
@@ -287,6 +290,30 @@ public class PostgreSQLVectorStore : VectorStoreBase
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         return await context.Vectors.CountAsync(cancellationToken);
     }
+
+    /// <inheritdoc />
+    /// <remarks>Every row of this store holds a vector, so every row whose revision differs or was never recorded counts.</remarks>
+    protected override async Task<int?> CountVectorsOutsideSpaceCoreAsync(string vectorSpaceRevision, CancellationToken cancellationToken)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await OutsideSpace(context, vectorSpaceRevision).CountAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Returns the chunk ids the caller stored (the original id kept in metadata), ordered by storage key.</remarks>
+    protected override async Task<IReadOnlyList<string>?> GetChunkIdsOutsideSpaceCoreAsync(string vectorSpaceRevision, int limit, CancellationToken cancellationToken)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var rows = await OutsideSpace(context, vectorSpaceRevision)
+            .OrderBy(v => v.Id)
+            .Select(v => new { v.Id, v.Metadata })
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+        return rows.Select(r => OriginalChunkId(r.Metadata) ?? r.Id.ToString()).ToList();
+    }
+
+    private static IQueryable<VectorEntity> OutsideSpace(FluxIndexDbContext context, string vectorSpaceRevision) =>
+        context.Vectors.Where(v => v.VectorSpaceRevision == null || v.VectorSpaceRevision != vectorSpaceRevision);
 
     public override async Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
     {
@@ -356,6 +383,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
                 TotalChunks = row.TotalChunks,
                 Content = row.Content,
                 Embedding = row.Embedding,
+                VectorSpaceRevision = row.VectorSpaceRevision,
                 TokenCount = row.TokenCount,
                 Metadata = metadata
             });
@@ -415,6 +443,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
             TotalChunks = entity.TotalChunks ?? 0,
             Content = entity.Content,
             Embedding = entity.Embedding.ToArray(),
+            VectorSpaceRevision = entity.VectorSpaceRevision,
             TokenCount = entity.TokenCount,
             Metadata = entity.Metadata
         };
@@ -449,6 +478,11 @@ public class VectorEntity
     public int? TotalChunks { get; set; }
     public string Content { get; set; } = string.Empty;
     public Vector Embedding { get; set; } = new Vector(Array.Empty<float>());
+    /// <summary>
+    /// The vector-space revision <see cref="Embedding"/> was computed in (<c>DocumentChunk.VectorSpaceRevision</c>); null when
+    /// none was reported or the row was written before the column existed (it is added in place).
+    /// </summary>
+    public string? VectorSpaceRevision { get; set; }
     public int TokenCount { get; set; }
     public Dictionary<string, object> Metadata { get; set; } = new();
 }
