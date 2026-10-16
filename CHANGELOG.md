@@ -17,6 +17,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   its own fingerprinted table, not refused. The in-memory store and stores that record nothing return null, which is also
   the interface default.
 
+### Fixed
+- **Large keyword-index batches on SQLite are fast again.** Since 0.96.0 the SQLite keyword index wrote chunks, postings
+  and filter rows as multi-row `VALUES` statements with up to 8,000 named parameters each, and SQLite resolves a
+  parameter name by scanning the statement's names, so binding cost the square of the parameter count: indexing 10,000
+  short documents in one batch (as `IndexDocumentsBatchAsync` does) took 12–28 s where 0.95.0 took 2 s. Rows now go
+  through one prepared statement rebound per row, and existing terms are looked up with one JSON array parameter
+  (`json_each`) instead of one parameter per term. The same batch takes about 1.5 s; one with a large vocabulary
+  (117,000 distinct terms) went from 4.7 s to 2.1 s. PostgreSQL is unchanged (it sends arrays).
+
 ### Dependencies
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.22.1 -> 0.23.0.
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.23.0 -> 0.23.1.

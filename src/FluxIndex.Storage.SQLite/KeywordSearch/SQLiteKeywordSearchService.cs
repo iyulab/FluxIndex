@@ -3,8 +3,12 @@ using FluxIndex.Core.Application.Services.KeywordSearch;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Buffers;
 using System.Data.Common;
 using System.Globalization;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 
 namespace FluxIndex.Storage.SQLite.KeywordSearch;
 
@@ -202,18 +206,90 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
         ON CONFLICT(term) DO NOTHING;
         """;
 
-    /// <summary>One parameter per term: term text is not safe to inline the way ids are.</summary>
+    /// <summary>
+    /// The terms travel as one JSON array parameter, read back with <c>json_each</c>: term text is not safe to inline the
+    /// way ids are, and one parameter per term made binding a statement cost the square of its term count, because
+    /// SQLite resolves a parameter name by scanning the statement's names.
+    /// </summary>
     protected override string BuildTermTextPredicate(DbCommand command, string columnRef, IReadOnlyCollection<string> terms)
     {
-        var names = new List<string>(terms.Count);
-        foreach (var term in terms)
+        var buffer = new ArrayBufferWriter<byte>();
+        // Relaxed escaping keeps non-ASCII text as UTF-8 instead of \u escapes; the value is a bound parameter, not markup.
+        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
         {
-            var name = "@t" + names.Count.ToString(CultureInfo.InvariantCulture);
-            AddParameter(command, name, term);
-            names.Add(name);
+            writer.WriteStartArray();
+            foreach (var term in terms)
+                writer.WriteStringValue(term);
+            writer.WriteEndArray();
         }
 
-        return $"{columnRef} IN ({string.Join(",", names)})";
+        AddParameter(command, "@terms", Encoding.UTF8.GetString(buffer.WrittenSpan));
+        return $"{columnRef} IN (SELECT value FROM json_each(@terms))";
+    }
+
+    /// <summary>Inserts the missing terms through one prepared statement, rebinding the term for each row.</summary>
+    protected override async Task InsertTermsAsync(DbConnection connection, IReadOnlyList<string> orderedTerms, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(orderedTerms);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = InsertTermIfAbsentSql;
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "@term";
+        command.Parameters.Add(parameter);
+        foreach (var term in orderedTerms)
+        {
+            parameter.Value = term;
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Inserts row by row through one prepared statement, rebinding its parameters for each row.
+    /// </summary>
+    /// <remarks>
+    /// The default multi-row <c>VALUES</c> list carries thousands of named parameters per statement, and SQLite resolves
+    /// a parameter name by scanning the statement's names, so binding one statement costs the square of its parameter
+    /// count. A 10,000-chunk batch spent most of its time there. SQLite runs in-process, so the round-trips the multi-row
+    /// form saves on a server cost nothing here, and reusing one compiled statement is the documented fast path for bulk
+    /// inserts.
+    /// </remarks>
+    protected override async Task InsertRowsAsync(
+        DbConnection connection,
+        string table,
+        IReadOnlyList<string> columns,
+        IReadOnlyList<Array> values,
+        string conflictClause,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(columns);
+        ArgumentNullException.ThrowIfNull(values);
+
+        var count = values[0].Length;
+        if (count == 0)
+            return;
+
+        await using var command = connection.CreateCommand();
+        var parameters = new DbParameter[columns.Count];
+        for (var c = 0; c < columns.Count; c++)
+        {
+            parameters[c] = command.CreateParameter();
+            parameters[c].ParameterName = "@c" + c.ToString(CultureInfo.InvariantCulture);
+            command.Parameters.Add(parameters[c]);
+        }
+
+        command.CommandText =
+            $"INSERT INTO {table} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.ParameterName))}) {conflictClause}";
+
+        for (var r = 0; r < count; r++)
+        {
+            for (var c = 0; c < columns.Count; c++)
+                parameters[c].Value = values[c].GetValue(r) ?? DBNull.Value;
+
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc />

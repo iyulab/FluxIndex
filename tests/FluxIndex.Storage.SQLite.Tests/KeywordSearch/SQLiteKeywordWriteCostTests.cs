@@ -137,6 +137,71 @@ public sealed class SQLiteKeywordWriteCostTests : IDisposable
     }
 
     /// <summary>
+    /// Existing terms are looked up by their text, sent to SQLite as one JSON array. A term that came back different
+    /// from that round trip would not be found, and the batch would fail as if a concurrent cleanup had removed it.
+    /// </summary>
+    [Fact]
+    public async Task TermsOutsideAscii_AreFoundAgain_WhenALaterBatchWritesThem()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var service = new SQLiteKeywordSearchService(
+            $"Data Source={NewPath()}", NullLogger<SQLiteKeywordSearchService>.Instance, CjkBigramTextAnalyzer.Instance, KeywordFieldOptions.None);
+        const string text = "검색어 \U00020000\U00020001\U00020002 café naïve";
+
+        await service.IndexChunksAsync([Chunk("1", text)], ct);
+        await service.IndexChunksAsync([Chunk("2", text)], ct);
+
+        (await service.SearchAsync("검색어", cancellationToken: ct)).Should().HaveCount(2);
+        (await service.SearchAsync("\U00020000\U00020001", cancellationToken: ct)).Should().HaveCount(2);
+        (await service.SearchAsync("café", cancellationToken: ct)).Should().HaveCount(2);
+    }
+
+    /// <summary>
+    /// A batch exists to be cheaper than its chunks written one by one. The set writes used to bind thousands of named
+    /// parameters per statement, which SQLite resolves by scanning the statement's names, so a 10,000-chunk batch took
+    /// several times longer than writing the same chunks one transaction at a time. Compares the run against itself.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Performance")]
+    public async Task OneLargeBatch_IsNoSlowerThanTheSameChunksOneAtATime()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const int count = 6_000;
+        var random = new Random(5);
+        var words = Enumerable.Range(0, 800)
+            .Select(_ => new string(Enumerable.Range(0, 2 + random.Next(3)).Select(_ => (char)(0xAC00 + random.Next(2000))).ToArray()))
+            .ToArray();
+        var chunks = Enumerable.Range(0, count).Select(i =>
+        {
+            var body = string.Join(' ', Enumerable.Range(0, 3 + random.Next(7))
+                .Select(_ => words[(int)(words.Length * random.NextDouble() * random.NextDouble())]));
+            var chunk = DocumentChunk.Create("doc-" + i, body, 0, 1);
+            chunk.Id = "c" + i;
+            chunk.Metadata = new Dictionary<string, object>(StringComparer.Ordinal) { ["kind"] = "row", ["column"] = "칸" + random.Next(20) };
+            return chunk;
+        }).ToList();
+
+        SQLiteKeywordSearchService InMemory() => new(
+            $"Data Source=kw-batch-{Guid.NewGuid():N};Mode=Memory;Cache=Shared",
+            NullLogger<SQLiteKeywordSearchService>.Instance, CjkBigramTextAnalyzer.Instance, KeywordFieldOptions.None);
+
+        using var batched = InMemory();
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        await batched.ReplaceDocumentsAsync([.. chunks.Select(c => c.DocumentId)], chunks, ct);
+        var batch = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+
+        using var single = InMemory();
+        started = System.Diagnostics.Stopwatch.GetTimestamp();
+        foreach (var chunk in chunks)
+            await single.ReplaceDocumentsAsync([chunk.DocumentId], [chunk], ct);
+        var oneByOne = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+
+        var report = $"{count} chunks: one batch {batch.TotalMilliseconds:F0} ms, one at a time {oneByOne.TotalMilliseconds:F0} ms";
+        TestContext.Current.TestOutputHelper?.WriteLine(report);
+        batch.Should().BeLessThan(oneByOne, report);
+    }
+
+    /// <summary>
     /// The shape the plan test protects, measured: entries written one at a time, the way a repair or a
     /// folder scan writes them. Compares the run against itself, so a slow machine moves both halves.
     /// </summary>
