@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.101.0] - 2026-10-17
 
 ### Added
 - **A store can say which vectors a new vector-space revision has not re-embedded yet — after a restart too.** When the
