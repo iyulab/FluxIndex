@@ -9,6 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Dependencies
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.22.1 -> 0.23.0.
+- Re-pinned sibling package(s) `FluxGuard.Remote` 0.23.0 -> 0.23.1.
 
 ---
 
