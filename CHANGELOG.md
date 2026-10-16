@@ -7,6 +7,25 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Added
+- **A store can say which vectors a new vector-space revision has not re-embedded yet — after a restart too.** When the
+  embedding library computes different vectors for the same model id (a new `EmbeddingIdentity.VectorSpaceRevision`), a
+  consumer re-embeds in place; until now no store kept the revision a vector was computed in, so an interrupted re-embed
+  could not be told from a finished one without a side file. `DocumentChunk.VectorSpaceRevision` is now set by the indexer
+  right after embedding and kept by the in-memory and sqlite-vec stores (a sibling table `fluxindex_vector_space`, so
+  existing vec0 tables need no change). `IVectorStore.CountVectorsOutsideSpaceAsync(revision)` and
+  `GetChunkIdsOutsideSpaceAsync(revision, limit)` answer from the store (null from a store that does not keep revisions —
+  the interface default); `Indexer.CountVectorsOutsideCurrentSpaceAsync()` and `Indexer.ReembedOutsideCurrentSpaceAsync(batchSize)`
+  use the embedder's current revision, and the re-embed writes batch by batch so calling it again continues. A vector written
+  before its store kept revisions counts as outside.
+
+### Fixed
+- **`InMemoryVectorStore.LoadFromFileAsync` restores chunks under their saved ids.** It rebuilt each chunk with a new id
+  (so `GetAsync(id)` returned a chunk whose `Id` differed from the one asked for), dropped metadata, token count and
+  creation time, and threw for any document with more than one chunk (it rebuilt every chunk as «1 of 1»). Files now carry
+  those fields (and each vector's revision); a file saved by an earlier version still loads, with the missing fields at
+  their defaults.
+
 ### Dependencies
 - Re-pinned sibling package(s) `FluxCurator` 0.16.0 -> 0.17.0.
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.23.1 -> 0.24.0, `LMSupply.Embedder` 0.122.0 -> 0.123.0, `LMSupply.Generator` 0.122.0 -> 0.123.0, `LMSupply.Reranker` 0.122.0 -> 0.123.0.

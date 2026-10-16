@@ -157,6 +157,35 @@ public abstract partial class VectorStoreBase : IVectorStore
     /// <summary>Removes the recorded identity — the store holds no vectors any more.</summary>
     protected virtual Task ForgetRecordedIdentityAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
+    /// <inheritdoc />
+    public Task<int?> CountVectorsOutsideSpaceAsync(string vectorSpaceRevision, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(vectorSpaceRevision);
+        return CountVectorsOutsideSpaceCoreAsync(vectorSpaceRevision, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<string>?> GetChunkIdsOutsideSpaceAsync(string vectorSpaceRevision, int limit, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(vectorSpaceRevision);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+        return GetChunkIdsOutsideSpaceCoreAsync(vectorSpaceRevision, limit, cancellationToken);
+    }
+
+    /// <summary>
+    /// Counts the vectors whose recorded <see cref="DocumentChunk.VectorSpaceRevision"/> is not
+    /// <paramref name="vectorSpaceRevision"/> (or is missing). The default keeps no revision and answers null.
+    /// </summary>
+    protected virtual Task<int?> CountVectorsOutsideSpaceCoreAsync(string vectorSpaceRevision, CancellationToken cancellationToken) =>
+        Task.FromResult<int?>(null);
+
+    /// <summary>
+    /// Up to <paramref name="limit"/> ids of the chunks <see cref="CountVectorsOutsideSpaceCoreAsync"/> counts, ordered by id.
+    /// The default keeps no revision and answers null.
+    /// </summary>
+    protected virtual Task<IReadOnlyList<string>?> GetChunkIdsOutsideSpaceCoreAsync(string vectorSpaceRevision, int limit, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<string>?>(null);
+
     /// <summary>
     /// Compares the bound identity with the recorded one, once per instance: a different record throws
     /// <see cref="EmbeddingModelMismatchException"/>; no record gets the bound identity recorded — adopted with a warning

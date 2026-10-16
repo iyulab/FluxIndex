@@ -26,6 +26,16 @@ public class DocumentChunk
     public int ChunkIndex { get; set; }
     public int TotalChunks { get; set; }
     public float[]? Embedding { get; set; }
+
+    /// <summary>
+    /// The vector-space revision <see cref="Embedding"/> was computed in — what the embedding service reported as
+    /// <see cref="ValueObjects.EmbeddingIdentity.VectorSpaceRevision"/> when it produced the vector. The indexer sets it
+    /// right after embedding; a store that tracks it keeps it next to the vector and returns it on read, so
+    /// <see cref="Application.Interfaces.IVectorStore.CountVectorsOutsideSpaceAsync"/> can tell which vectors a new
+    /// revision has not re-embedded yet. Null when the service reports none, or the vector was written before stores kept it.
+    /// </summary>
+    public string? VectorSpaceRevision { get; set; }
+
     public Dictionary<string, object> Properties { get; private set; }
     public DateTime CreatedAt { get; set; }
     public int TokenCount { get; set; }

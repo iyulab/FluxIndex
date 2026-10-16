@@ -357,6 +357,21 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
     }
 
     /// <inheritdoc />
+    protected override Task<int?> CountVectorsOutsideSpaceCoreAsync(string vectorSpaceRevision, CancellationToken cancellationToken) =>
+        Task.FromResult<int?>(OutsideSpace(vectorSpaceRevision).Count());
+
+    /// <inheritdoc />
+    protected override Task<IReadOnlyList<string>?> GetChunkIdsOutsideSpaceCoreAsync(string vectorSpaceRevision, int limit, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<string>?>(OutsideSpace(vectorSpaceRevision).Order(StringComparer.Ordinal).Take(limit).ToList());
+
+    /// <summary>Ids of the chunks that hold a vector not computed in <paramref name="vectorSpaceRevision"/>.</summary>
+    private IEnumerable<string> OutsideSpace(string vectorSpaceRevision) =>
+        _chunks
+            .Where(kvp => kvp.Value.embedding.Length > 0
+                && !string.Equals(kvp.Value.chunk.VectorSpaceRevision, vectorSpaceRevision, StringComparison.Ordinal))
+            .Select(kvp => kvp.Key);
+
+    /// <inheritdoc />
     public override Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
     {
         lock (_indexLock)
@@ -425,7 +440,7 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
         {
             var data = new VectorStoreData
             {
-                Version = 1,
+                Version = 2,
                 SavedAt = DateTime.UtcNow,
                 Chunks = _chunks.Select(kvp => new ChunkData
                 {
@@ -433,7 +448,12 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
                     DocumentId = kvp.Value.chunk.DocumentId,
                     Content = kvp.Value.chunk.Content,
                     ChunkIndex = kvp.Value.chunk.ChunkIndex,
-                    Embedding = kvp.Value.embedding
+                    TotalChunks = kvp.Value.chunk.TotalChunks,
+                    TokenCount = kvp.Value.chunk.TokenCount,
+                    CreatedAt = kvp.Value.chunk.CreatedAt,
+                    Metadata = kvp.Value.chunk.Metadata,
+                    Embedding = kvp.Value.embedding,
+                    VectorSpaceRevision = kvp.Value.chunk.VectorSpaceRevision
                 }).ToList()
             };
 
@@ -478,18 +498,21 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
 
             foreach (var chunkData in data.Chunks)
             {
-                var chunk = DocumentChunk.Create(
-                    chunkData.DocumentId ?? string.Empty,
-                    chunkData.Content ?? string.Empty,
-                    chunkData.ChunkIndex,
-                    1
-                );
-
-                // Set embedding if available
-                if (chunkData.Embedding != null && chunkData.Embedding.Length > 0)
+                // The chunk comes back under the id it was saved with: a version-1 file kept no more than id, document,
+                // content, index and vector, so its other fields read as their defaults.
+                var chunk = new DocumentChunk
                 {
-                    chunk.SetEmbedding(chunkData.Embedding);
-                }
+                    Id = chunkData.Id,
+                    DocumentId = chunkData.DocumentId ?? string.Empty,
+                    Content = chunkData.Content ?? string.Empty,
+                    ChunkIndex = chunkData.ChunkIndex,
+                    TotalChunks = chunkData.TotalChunks,
+                    TokenCount = chunkData.TokenCount,
+                    CreatedAt = chunkData.CreatedAt ?? DateTime.UtcNow,
+                    Metadata = chunkData.Metadata is null ? null : MetadataValues.ToPlain(chunkData.Metadata),
+                    Embedding = chunkData.Embedding is { Length: > 0 } ? chunkData.Embedding : null,
+                    VectorSpaceRevision = chunkData.VectorSpaceRevision
+                };
 
                 _chunks.TryAdd(chunkData.Id, (chunk, chunkData.Embedding ?? Array.Empty<float>()));
 
@@ -540,7 +563,12 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
         public string? DocumentId { get; set; }
         public string? Content { get; set; }
         public int ChunkIndex { get; set; }
+        public int TotalChunks { get; set; }
+        public int TokenCount { get; set; }
+        public DateTime? CreatedAt { get; set; }
+        public Dictionary<string, object>? Metadata { get; set; }
         public float[]? Embedding { get; set; }
+        public string? VectorSpaceRevision { get; set; }
     }
 
     #endregion

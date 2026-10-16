@@ -257,6 +257,12 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
     public Task<EmbeddingIdentity?> GetRecordedIdentityAsync(CancellationToken cancellationToken = default)
         => _innerStore.GetRecordedIdentityAsync(cancellationToken);
 
+    public Task<int?> CountVectorsOutsideSpaceAsync(string vectorSpaceRevision, CancellationToken cancellationToken = default)
+        => _innerStore.CountVectorsOutsideSpaceAsync(vectorSpaceRevision, cancellationToken);
+
+    public Task<IReadOnlyList<string>?> GetChunkIdsOutsideSpaceAsync(string vectorSpaceRevision, int limit, CancellationToken cancellationToken = default)
+        => _innerStore.GetChunkIdsOutsideSpaceAsync(vectorSpaceRevision, limit, cancellationToken);
+
     public Task<bool> VerifyHealthAsync(CancellationToken cancellationToken = default)
         => _innerStore.VerifyHealthAsync(cancellationToken);
 

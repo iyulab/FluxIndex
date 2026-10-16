@@ -35,6 +35,14 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   null when nothing is recorded) — and compare it with your embedding service's `GetIdentity()` to tell whether the index
   was built with the configured model. sqlite-vec records the identity of its latest write (a switched model is not
   refused there, so the record says which table is current); Qdrant answers for a `Fixed` collection.
+- **Re-embedding into a new vector-space revision** — when the embedding library starts computing different vectors for the
+  same model id (it reports a new `EmbeddingIdentity.VectorSpaceRevision`), each vector already carries the revision it was
+  computed in (`DocumentChunk.VectorSpaceRevision`, set by the indexer). `await context.Indexer.CountVectorsOutsideCurrentSpaceAsync()`
+  tells how many are not in the embedder's current revision — 0 means a re-embed finished, even after a restart — and
+  `await context.Indexer.ReembedOutsideCurrentSpaceAsync(batchSize)` re-embeds only those, in place, writing each batch before
+  the next so a call cut short continues where it stopped. Stores: in-memory and sqlite-vec (`IVectorStore.CountVectorsOutsideSpaceAsync`
+  / `GetChunkIdsOutsideSpaceAsync`; a store that does not keep revisions answers null). Vectors written before a store kept
+  revisions count as outside.
 - **Batch indexing** — `Indexer.IndexBatchAsync(documents, progress, parallelism)`; chunk embeddings go through
   `IEmbeddingService.GenerateEmbeddingsBatchAsync`. A document that cannot be indexed does not stop the batch, and is not
   dropped silently: the others are written, then `BatchIndexingException` names each one left out (`Failures`) and the

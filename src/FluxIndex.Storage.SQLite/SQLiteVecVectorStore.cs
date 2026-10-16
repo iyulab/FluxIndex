@@ -195,6 +195,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     if (chunk.Embedding != null && VecTableActive)
                     {
                         await context.StoreVectorInVecTableAsync(id, chunk.Embedding, cancellationToken);
+                        await WriteVectorSpacesAsync(context, [(id, chunk.VectorSpaceRevision)], cancellationToken);
                         await RecordBoundIdentityAsync(context, cancellationToken);
                     }
                     else if (existing != null && VecTableActive)
@@ -425,6 +426,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         // StoreCoreAsync). Within one batch the last chunk carrying an id wins, the same way
         // two sequential stores of that id would resolve.
         var vectorById = new Dictionary<string, float[]>(StringComparer.Ordinal);
+        var spaceById = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var chunk in chunkList)
         {
             var id = chunk.EnsureId();
@@ -446,10 +448,12 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             if (chunk.Embedding != null && VecTableActive)
             {
                 vectorById[id] = chunk.Embedding;
+                spaceById[id] = chunk.VectorSpaceRevision;
             }
             else
             {
                 vectorById.Remove(id);
+                spaceById.Remove(id);
             }
         }
 
@@ -531,7 +535,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         {
             await StoreBatchVectorsAsync(context, vectorBatch, cancellationToken);
             if (vectorBatch.Count > 0 && VecTableActive)
+            {
+                await WriteVectorSpacesAsync(context, spaceById.Select(kv => (kv.Key, kv.Value)).ToList(), cancellationToken);
                 await RecordBoundIdentityAsync(context, cancellationToken);
+            }
         }
 
         return ids;
@@ -659,6 +666,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 return null;
 
             var vectors = await ReadStoredVectorsAsync(context, [chunkEntity.Id], cancellationToken);
+            var spaces = await ReadVectorSpacesAsync(context, vectors.Keys, cancellationToken);
             var chunk = new DocumentChunk
             {
                 Id = chunkEntity.Id,
@@ -667,6 +675,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 TotalChunks = chunkEntity.TotalChunks ?? 0,
                 Content = chunkEntity.Content,
                 Embedding = vectors.GetValueOrDefault(chunkEntity.Id),
+                VectorSpaceRevision = spaces.GetValueOrDefault(chunkEntity.Id),
                 TokenCount = chunkEntity.TokenCount,
                 Metadata = chunkEntity.Metadata
             };
@@ -1361,6 +1370,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 .OrderBy(c => c.ChunkIndex)
                 .ToListAsync(cancellationToken);
             var vectors = await ReadStoredVectorsAsync(context, entities.Select(e => e.Id), cancellationToken);
+            var spaces = await ReadVectorSpacesAsync(context, vectors.Keys, cancellationToken);
 
             return entities.Select(e => new DocumentChunk
             {
@@ -1369,6 +1379,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 ChunkIndex = e.ChunkIndex,
                 TotalChunks = e.TotalChunks ?? 0,
                 Content = e.Content,
+                VectorSpaceRevision = spaces.GetValueOrDefault(e.Id),
                 TokenCount = e.TokenCount,
                 Metadata = e.Metadata,
                 Embedding = vectors.GetValueOrDefault(e.Id)
@@ -1689,6 +1700,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             .Where(c => ids.Contains(c.Id))
             .ToListAsync(cancellationToken);
         var vectors = await ReadStoredVectorsAsync(context, entities.Select(e => e.Id), cancellationToken);
+        var spaces = await ReadVectorSpacesAsync(context, vectors.Keys, cancellationToken);
 
         return entities.Select(e => new DocumentChunk
         {
@@ -1699,7 +1711,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             Content = e.Content,
             TokenCount = e.TokenCount,
             Metadata = e.Metadata,
-            Embedding = vectors.GetValueOrDefault(e.Id)
+            Embedding = vectors.GetValueOrDefault(e.Id),
+            VectorSpaceRevision = spaces.GetValueOrDefault(e.Id)
         }).ToList();
     }
 
@@ -1743,6 +1756,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     if (chunk.Embedding != null && VecTableActive)
                     {
                         await context.StoreVectorInVecTableAsync(chunk.Id, chunk.Embedding, cancellationToken);
+                        await WriteVectorSpacesAsync(context, [(chunk.Id, chunk.VectorSpaceRevision)], cancellationToken);
                     }
 
                     // An update that changes nothing is a legitimate no-op; an update that had
@@ -1837,6 +1851,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     {
                         var clearSql = $"DELETE FROM {_options.GetVecTableName()}";
                         await context.Database.ExecuteSqlRawAsync(clearSql, cancellationToken);
+                        await EnsureVectorSpaceTableAsync(context, cancellationToken);
+                        await context.Database.ExecuteSqlAsync(
+                            $"DELETE FROM fluxindex_vector_space WHERE fingerprint = {_options.EmbeddingFingerprint}", cancellationToken);
                     }
 
                     // 메타데이터 테이블 클리어
@@ -1931,6 +1948,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         _options.VectorDimension,
                         _options.VecTableOptions,
                         cancellationToken);
+
+                    // The vector-space revision of each vector (sibling of the vec0 tables); reads assume it exists.
+                    await EnsureVectorSpaceTableAsync(context, cancellationToken);
 
                     // Warm up vec0 query plan JIT so the first user batch is not cold-started.
                     // CreateVecTableAsync ensures the virtual table exists; this LIMIT 0 SELECT
@@ -2039,6 +2059,130 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     /// </summary>
     /// <summary>The <c>fluxindex_vector_identity</c> row of this store (the plain SQLite store uses <c>vectors</c>).</summary>
     private const string IdentityStoreKey = "vec0";
+
+    /// <summary>
+    /// <c>fluxindex_vector_space</c>: the vector-space revision each vector was computed in, per fingerprinted vec0 table —
+    /// a sibling table rather than a vec0 column because a vec0 table cannot be altered, so tables written before this
+    /// existed keep working. A row whose vector is gone is ignored (every query joins the vec0 table), and every vector
+    /// write rewrites its row, so a leftover can never vouch for a vector written later.
+    /// </summary>
+    private static Task<int> EnsureVectorSpaceTableAsync(SQLiteVecDbContext context, CancellationToken cancellationToken) =>
+        context.Database.ExecuteSqlRawAsync(
+            "CREATE TABLE IF NOT EXISTS fluxindex_vector_space (fingerprint TEXT NOT NULL, chunk_id TEXT NOT NULL, revision TEXT, PRIMARY KEY (fingerprint, chunk_id))",
+            cancellationToken);
+
+    /// <summary>Records the revision each written vector was computed in (null = not reported) for the bound fingerprint.</summary>
+    private async Task WriteVectorSpacesAsync(SQLiteVecDbContext context, List<(string Id, string? Revision)> rows, CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0 || _options.EmbeddingFingerprint is not { } fingerprint)
+            return;
+
+        await EnsureVectorSpaceTableAsync(context, cancellationToken);
+        const int sliceRows = 300; // 3 parameters a row, well under SQLite's bound-parameter limit
+        for (var i = 0; i < rows.Count; i += sliceRows)
+        {
+            var slice = rows.Skip(i).Take(sliceRows).ToList();
+            var parameters = new List<object>(slice.Count * 3);
+            var values = new List<string>(slice.Count);
+            foreach (var (id, revision) in slice)
+            {
+                var p = parameters.Count;
+                parameters.Add(fingerprint);
+                parameters.Add(id);
+                if (revision is null)
+                {
+                    // A null raw-SQL parameter has no store type mapping; an unreported revision is written as SQL NULL.
+                    values.Add($"({{{p}}}, {{{p + 1}}}, NULL)");
+                }
+                else
+                {
+                    values.Add($"({{{p}}}, {{{p + 1}}}, {{{p + 2}}})");
+                    parameters.Add(revision);
+                }
+            }
+
+            var sql = "INSERT INTO fluxindex_vector_space (fingerprint, chunk_id, revision) VALUES " + string.Join(", ", values) +
+                      " ON CONFLICT (fingerprint, chunk_id) DO UPDATE SET revision = excluded.revision";
+            await context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken);
+        }
+    }
+
+    /// <summary>The recorded revision of each of <paramref name="chunkIds"/> that has one, for the bound fingerprint.</summary>
+    private async Task<Dictionary<string, string?>> ReadVectorSpacesAsync(SQLiteVecDbContext context, IEnumerable<string> chunkIds, CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var ids = chunkIds.ToList();
+        if (ids.Count == 0 || !VecTableActive || _options.EmbeddingFingerprint is not { } fingerprint)
+            return result;
+
+        const int sliceSize = 500;
+        for (var i = 0; i < ids.Count; i += sliceSize)
+        {
+            var part = ids.Skip(i).Take(sliceSize).ToList();
+            var parameters = new List<object>(part.Count + 1) { fingerprint };
+            parameters.AddRange(part);
+            var placeholders = string.Join(", ", part.Select((_, k) => $"{{{k + 1}}}"));
+            // Placeholders only ({1}, {2}, ...) — every value is a parameter.
+            var sql = "SELECT chunk_id AS ChunkId, revision AS Revision FROM fluxindex_vector_space WHERE fingerprint = {0} AND chunk_id IN (" + placeholders + ")";
+            var rows = await context.Database
+                .SqlQueryRaw<VectorSpaceRow>(sql, parameters.ToArray())
+                .ToListAsync(cancellationToken);
+            foreach (var row in rows)
+                result[row.ChunkId] = row.Revision;
+        }
+
+        return result;
+    }
+
+    private sealed class VectorSpaceRow
+    {
+        public string ChunkId { get; set; } = "";
+        public string? Revision { get; set; }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Counts the vectors of the bound fingerprint's vec0 table whose recorded revision differs or is missing (vectors written
+    /// before this store kept revisions). 0 when no identity is bound — a keyword-only store holds no vectors.
+    /// </remarks>
+    public async Task<int?> CountVectorsOutsideSpaceAsync(string vectorSpaceRevision, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(vectorSpaceRevision);
+        await EnsureInitializedAsync(cancellationToken);
+        if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
+            return await _fallbackStore.Value.CountVectorsOutsideSpaceAsync(vectorSpaceRevision, cancellationToken);
+        if (!VecTableActive)
+            return 0;
+
+        await using var context = await OpenContextAsync(cancellationToken);
+        // The vec0 table name is a sanitized identifier (chunk_embeddings_{hex}); the values are parameters.
+        var sql = "SELECT COUNT(*) AS \"Value\" FROM " + _options.GetVecTableName() + " e " +
+                  "LEFT JOIN fluxindex_vector_space s ON s.fingerprint = {0} AND s.chunk_id = e.chunk_id " +
+                  "WHERE s.revision IS NULL OR s.revision <> {1}";
+        return await context.Database
+            .SqlQueryRaw<int>(sql, _options.EmbeddingFingerprint!, vectorSpaceRevision)
+            .SingleAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>?> GetChunkIdsOutsideSpaceAsync(string vectorSpaceRevision, int limit, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(vectorSpaceRevision);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+        await EnsureInitializedAsync(cancellationToken);
+        if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
+            return await _fallbackStore.Value.GetChunkIdsOutsideSpaceAsync(vectorSpaceRevision, limit, cancellationToken);
+        if (!VecTableActive)
+            return [];
+
+        await using var context = await OpenContextAsync(cancellationToken);
+        var sql = "SELECT e.chunk_id AS \"Value\" FROM " + _options.GetVecTableName() + " e " +
+                  "LEFT JOIN fluxindex_vector_space s ON s.fingerprint = {0} AND s.chunk_id = e.chunk_id " +
+                  "WHERE s.revision IS NULL OR s.revision <> {1} ORDER BY e.chunk_id LIMIT {2}";
+        return await context.Database
+            .SqlQueryRaw<string>(sql, _options.EmbeddingFingerprint!, vectorSpaceRevision, limit)
+            .ToListAsync(cancellationToken);
+    }
 
     private static Task<int> EnsureIdentityTableAsync(SQLiteVecDbContext context, CancellationToken cancellationToken) =>
         context.Database.ExecuteSqlRawAsync(

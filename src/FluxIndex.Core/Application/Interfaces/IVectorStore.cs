@@ -269,6 +269,25 @@ public interface IVectorStore
         Task.FromResult<EmbeddingIdentity?>(null);
 
     /// <summary>
+    /// How many stored vectors (in the bound vector space) were not computed in <paramref name="vectorSpaceRevision"/> —
+    /// their <see cref="DocumentChunk.VectorSpaceRevision"/> differs, or was never recorded (a vector written before the
+    /// store kept it). Read from the store itself, so a restarted process can tell whether a re-embed into a new revision
+    /// finished: 0 means every vector is in that revision. Chunks without a vector are not counted.
+    /// </summary>
+    /// <returns>The count, or null when this store does not keep the revision of its vectors (the default).</returns>
+    Task<int?> CountVectorsOutsideSpaceAsync(string vectorSpaceRevision, CancellationToken cancellationToken = default) =>
+        Task.FromResult<int?>(null);
+
+    /// <summary>
+    /// The ids of up to <paramref name="limit"/> chunks whose vector was not computed in <paramref name="vectorSpaceRevision"/>
+    /// (the same set <see cref="CountVectorsOutsideSpaceAsync"/> counts), in a stable order, so a caller can re-embed them
+    /// batch by batch and resume after a restart.
+    /// </summary>
+    /// <returns>The ids, or null when this store does not keep the revision of its vectors (the default).</returns>
+    Task<IReadOnlyList<string>?> GetChunkIdsOutsideSpaceAsync(string vectorSpaceRevision, int limit, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<string>?>(null);
+
+    /// <summary>
     /// Verifies that the vector store is operational by testing a write+delete cycle.
     /// Returns false if the store is corrupted and attempts self-healing.
     /// </summary>

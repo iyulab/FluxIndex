@@ -997,6 +997,70 @@ public partial class Indexer
     }
 
     /// <summary>
+    /// How many stored vectors were not computed in the vector space the embedding service reports now — the work
+    /// <see cref="ReembedOutsideCurrentSpaceAsync"/> has left. Answered by the store, so a restarted process can tell
+    /// whether a re-embed into a new revision finished (0) without keeping its own record.
+    /// </summary>
+    /// <returns>The count, or null when the vector store does not keep the revision of its vectors.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// This indexer has no embedding service, or the service reports no vector-space revision (there is no space to compare against).
+    /// </exception>
+    public Task<int?> CountVectorsOutsideCurrentSpaceAsync(CancellationToken cancellationToken = default) =>
+        VectorStore.CountVectorsOutsideSpaceAsync(CurrentVectorSpaceRevision(), cancellationToken);
+
+    /// <summary>
+    /// Re-embeds, in place, the chunks whose vector was not computed in the vector space the embedding service reports
+    /// now — after the embedding library starts computing different vectors for the same model id, for instance. Each
+    /// batch is written before the next is read, so a call cut short (cancellation, a restart) leaves the finished batches
+    /// in the new space and a later call continues with the rest. Content, metadata and the keyword index are left as they
+    /// are; the vector is computed from the chunk's stored content, as <see cref="BackfillEmbeddingsAsync"/> does.
+    /// </summary>
+    /// <param name="batchSize">Chunks embedded per batch (default 64).</param>
+    /// <param name="cancellationToken">Cancels between and within batches; finished batches stay written.</param>
+    /// <returns>The number of chunks re-embedded.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// This indexer has no embedding service, the service reports no vector-space revision, or a batch came back still
+    /// outside the space (the service did not return a vector for it).
+    /// </exception>
+    /// <exception cref="NotSupportedException">The vector store does not keep the revision of its vectors.</exception>
+    public async Task<int> ReembedOutsideCurrentSpaceAsync(int batchSize = 64, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
+        var revision = CurrentVectorSpaceRevision();
+        var total = 0;
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var ids = await VectorStore.GetChunkIdsOutsideSpaceAsync(revision, batchSize, cancellationToken)
+                ?? throw new NotSupportedException(
+                    $"{VectorStore.GetType().Name} does not keep the vector-space revision of its vectors, so it cannot list the ones outside '{revision}'.");
+            if (ids.Count == 0)
+                return total;
+
+            var chunks = (await VectorStore.GetChunksByIdsAsync(ids, cancellationToken)).ToList();
+            var embedded = await GenerateEmbeddingsAsync(chunks, cancellationToken);
+            if (embedded.Count == 0 || embedded.Any(c => c.Embedding is not { Length: > 0 } || c.VectorSpaceRevision != revision))
+                throw new InvalidOperationException(
+                    $"Re-embedding {ids.Count} chunk(s) into vector space '{revision}' did not give every chunk a vector in that space; stopping so the same batch is not read again forever.");
+
+            await VectorStore.StoreBatchAsync(embedded, cancellationToken);
+            foreach (var documentId in embedded.Select(c => c.DocumentId).Distinct(StringComparer.Ordinal))
+                await InvalidateReadCachesAsync(documentId, cancellationToken);
+            total += embedded.Count;
+        }
+    }
+
+    private string CurrentVectorSpaceRevision()
+    {
+        if (IsKeywordOnly)
+            throw new InvalidOperationException(NoEmbeddingService.NotConfiguredMessage);
+        return _embeddingService.GetIdentity().VectorSpaceRevision
+            ?? throw new InvalidOperationException(
+                "The embedding service reports no vector-space revision, so there is no space to compare stored vectors against.");
+    }
+
+    /// <summary>
     /// Deletes a document: its chunks from the vector store and the keyword index, and its record.
     /// </summary>
     /// <returns>Whether anything of the document was removed — its chunks or its record.</returns>
@@ -1232,6 +1296,7 @@ public partial class Indexer
             for (var i = 0; i < chunks.Count; i++)
                 chunks[i].Embedding = embeddings[i];
 
+            StampVectorSpace(chunks);
             LogBatchEmbeddingCompleted(_logger, chunks.Count);
             return true;
         }
@@ -1248,6 +1313,35 @@ public partial class Indexer
     {
         // Keyword-only: the chunks are stored without vectors; nothing writes a placeholder.
         if (chunks.Count == 0 || IsKeywordOnly) return chunks;
+
+        var embedded = await EmbedChunksAsync(chunks, cancellationToken);
+        StampVectorSpace(embedded);
+        return embedded;
+    }
+
+    /// <summary>
+    /// Records on every chunk that got a vector the vector-space revision the embedding service reports now — after
+    /// embedding, so a service that loads its model lazily already knows it. A store that keeps it can then say which
+    /// vectors a later revision has not re-embedded (<see cref="IVectorStore.CountVectorsOutsideSpaceAsync"/>).
+    /// </summary>
+    private void StampVectorSpace(IEnumerable<DocumentChunkEntity> chunks)
+    {
+        // A test double that never configured GetIdentity returns null; indexing must not fail on the stamp.
+        if (_embeddingService.GetIdentity() is not { } identity)
+            return;
+
+        var revision = identity.VectorSpaceRevision;
+        foreach (var chunk in chunks)
+        {
+            if (chunk.Embedding is { Length: > 0 })
+                chunk.VectorSpaceRevision = revision;
+        }
+    }
+
+    private async Task<List<DocumentChunkEntity>> EmbedChunksAsync(
+        List<DocumentChunkEntity> chunks,
+        CancellationToken cancellationToken)
+    {
 
         // 배치 임베딩 API 사용 (성능 최적화)
         try
