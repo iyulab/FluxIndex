@@ -5,6 +5,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Dependencies
+- Re-pinned sibling package(s) `FluxCurator` 0.16.0 -> 0.17.0.
+
+---
+
 ## [0.100.0] - 2026-10-16
 
 ### Added
