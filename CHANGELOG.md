@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.100.0] - 2026-10-16
 
 ### Added
 - **Read which embedding identity a vector store's index was written with: `IVectorStore.GetRecordedIdentityAsync()`.**
