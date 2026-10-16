@@ -9,6 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Dependencies
 - Re-pinned sibling package(s) `FluxCurator` 0.16.0 -> 0.17.0.
+- Re-pinned sibling package(s) `FluxGuard.Remote` 0.23.1 -> 0.24.0, `LMSupply.Embedder` 0.122.0 -> 0.123.0, `LMSupply.Generator` 0.122.0 -> 0.123.0, `LMSupply.Reranker` 0.122.0 -> 0.123.0.
 
 ---
 
