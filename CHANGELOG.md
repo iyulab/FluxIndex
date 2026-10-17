@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.102.0] - 2026-10-17
 
 ### Added
 - **An index built before 0.101.0 can take the revision it was built in, without re-embedding.** Vectors written before a
