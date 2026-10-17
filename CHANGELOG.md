@@ -9,6 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Dependencies
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.123.0 -> 0.124.0, `LMSupply.Generator` 0.123.0 -> 0.124.0, `LMSupply.Reranker` 0.123.0 -> 0.124.0.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.124.0 -> 0.125.0, `LMSupply.Generator` 0.124.0 -> 0.125.0, `LMSupply.Reranker` 0.124.0 -> 0.125.0.
 
 ---
 
