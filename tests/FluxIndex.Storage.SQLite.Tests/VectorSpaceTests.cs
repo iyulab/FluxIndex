@@ -60,6 +60,22 @@ public sealed class VectorSpaceTests : IDisposable
         (await store.GetChunkIdsOutsideSpaceAsync("B", 10, Ct)).Should().Equal("c01");
     }
 
+    [Fact]
+    public async Task Adopt_GivesVectorsWithoutARevisionTheOneTheIndexWasBuiltIn_AndLeavesTheRest()
+    {
+        await Store().StoreBatchAsync(
+            [Chunk(0, revision: null), Chunk(1, revision: null), Chunk(2, "B"), Chunk(3, "A"), Chunk(4, revision: null, withVector: false)], Ct);
+
+        (await Store().AdoptUnrecordedVectorsAsync("A", Ct)).Should().Be(2);
+
+        var restarted = Store();
+        (await restarted.CountVectorsOutsideSpaceAsync("A", Ct)).Should().Be(1, "only c02 was computed in another revision");
+        (await restarted.GetAsync("c00", Ct))!.VectorSpaceRevision.Should().Be("A");
+        (await restarted.GetAsync("c02", Ct))!.VectorSpaceRevision.Should().Be("B", "a recorded revision is not changed");
+        (await restarted.GetAsync("c04", Ct))!.VectorSpaceRevision.Should().BeNull("a chunk without a vector has no space");
+        (await restarted.AdoptUnrecordedVectorsAsync("A", Ct)).Should().Be(0);
+    }
+
     public void Dispose()
     {
         foreach (var provider in _providers)

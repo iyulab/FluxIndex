@@ -263,6 +263,9 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
     public Task<IReadOnlyList<string>?> GetChunkIdsOutsideSpaceAsync(string vectorSpaceRevision, int limit, CancellationToken cancellationToken = default)
         => _innerStore.GetChunkIdsOutsideSpaceAsync(vectorSpaceRevision, limit, cancellationToken);
 
+    public Task<int?> AdoptUnrecordedVectorsAsync(string vectorSpaceRevision, CancellationToken cancellationToken = default)
+        => _innerStore.AdoptUnrecordedVectorsAsync(vectorSpaceRevision, cancellationToken);
+
     public Task<bool> VerifyHealthAsync(CancellationToken cancellationToken = default)
         => _innerStore.VerifyHealthAsync(cancellationToken);
 

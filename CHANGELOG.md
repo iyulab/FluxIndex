@@ -5,6 +5,21 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Added
+- **An index built before 0.101.0 can take the revision it was built in, without re-embedding.** Vectors written before a
+  store kept revisions have none and count as outside every space, so the first start on 0.101.0 read every existing index
+  as an unfinished re-embed. `IVectorStore.AdoptUnrecordedVectorsAsync(revision)` records `revision` on every stored vector
+  that has none and returns how many (vectors with a recorded revision are not changed; null from a store that keeps no
+  revisions — the interface default). In-memory (persisted with the store), sqlite-vec, plain SQLite, PostgreSQL and Qdrant.
+- **Any writer of vectors records the revision they were computed in.** `IEmbeddingService.StampVectorSpace(chunks)` (an
+  extension in `FluxIndex.Core`) sets `DocumentChunk.VectorSpaceRevision` on every chunk with a vector to the revision the
+  service reports now; the indexer uses it, and a pipeline that embeds and calls `IVectorStore.StoreBatchAsync` itself calls
+  it after embedding — otherwise its vectors are stored without a revision.
+
+---
+
 ## [0.101.0] - 2026-10-17
 
 ### Added

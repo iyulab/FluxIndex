@@ -364,6 +364,27 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
     protected override Task<IReadOnlyList<string>?> GetChunkIdsOutsideSpaceCoreAsync(string vectorSpaceRevision, int limit, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<string>?>(OutsideSpace(vectorSpaceRevision).Order(StringComparer.Ordinal).Take(limit).ToList());
 
+    /// <inheritdoc />
+    protected override async Task<int?> AdoptUnrecordedVectorsCoreAsync(string vectorSpaceRevision, CancellationToken cancellationToken)
+    {
+        var adopted = 0;
+        lock (_indexLock)
+        {
+            foreach (var (chunk, embedding) in _chunks.Values)
+            {
+                if (embedding.Length > 0 && chunk.VectorSpaceRevision is null)
+                {
+                    chunk.VectorSpaceRevision = vectorSpaceRevision;
+                    adopted++;
+                }
+            }
+        }
+
+        if (adopted > 0)
+            await AutoSaveIfEnabledAsync(cancellationToken);
+        return adopted;
+    }
+
     /// <summary>Ids of the chunks that hold a vector not computed in <paramref name="vectorSpaceRevision"/>.</summary>
     private IEnumerable<string> OutsideSpace(string vectorSpaceRevision) =>
         _chunks

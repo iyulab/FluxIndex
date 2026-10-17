@@ -68,4 +68,19 @@ public sealed class VectorSpaceTests : IAsyncLifetime
         ids.Should().BeEquivalentTo(["chunk-04", "chunk-05", "chunk-06", "chunk-07", "chunk-08", "chunk-09"], "the caller's ids, not storage keys");
         (await fresh.GetAsync("chunk-02", ct))!.VectorSpaceRevision.Should().Be("B");
     }
+
+    [Fact]
+    public async Task Adopt_GivesVectorsWithoutARevisionTheOneTheIndexWasBuiltIn_AndLeavesTheRest()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await Scope().StoreBatchAsync([Chunk(0, revision: null), Chunk(1, revision: null), Chunk(2, "B"), Chunk(3, "A")], ct);
+
+        (await Scope().AdoptUnrecordedVectorsAsync("A", ct)).Should().Be(2);
+
+        var fresh = Scope();
+        (await fresh.CountVectorsOutsideSpaceAsync("A", ct)).Should().Be(1, "only chunk-02 was computed in another revision");
+        (await fresh.GetAsync("chunk-00", ct))!.VectorSpaceRevision.Should().Be("A");
+        (await fresh.GetAsync("chunk-02", ct))!.VectorSpaceRevision.Should().Be("B");
+        (await fresh.AdoptUnrecordedVectorsAsync("A", ct)).Should().Be(0);
+    }
 }

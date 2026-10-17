@@ -1151,6 +1151,28 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
         return response.Result.Select(p => ChunkIdFromPayload(p.Payload) ?? p.Id.Uuid).ToList();
     }
 
+    /// <inheritdoc />
+    /// <remarks>Sets the revision payload on every point that has none (Qdrant's is-empty condition on the payload key).</remarks>
+    public async Task<int?> AdoptUnrecordedVectorsAsync(string vectorSpaceRevision, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(vectorSpaceRevision);
+        await EnsureCollectionAsync(cancellationToken);
+        var unrecorded = new Filter
+        {
+            Must = { new Condition { IsEmpty = new IsEmptyCondition { Key = VectorSpaceRevisionPayloadKey } } }
+        };
+        var count = (int)await _client.CountAsync(_resolvedCollectionName!, unrecorded, exact: true, cancellationToken: cancellationToken);
+        if (count == 0)
+            return 0;
+
+        await _client.SetPayloadAsync(
+            _resolvedCollectionName!,
+            new Dictionary<string, Value> { [VectorSpaceRevisionPayloadKey] = vectorSpaceRevision },
+            unrecorded,
+            cancellationToken: cancellationToken);
+        return count;
+    }
+
     public async Task<int> CountAsync(CancellationToken cancellationToken = default)
     {
         return await GetCountAsync(cancellationToken);

@@ -312,6 +312,15 @@ public class PostgreSQLVectorStore : VectorStoreBase
         return rows.Select(r => OriginalChunkId(r.Metadata) ?? r.Id.ToString()).ToList();
     }
 
+    /// <inheritdoc />
+    protected override async Task<int?> AdoptUnrecordedVectorsCoreAsync(string vectorSpaceRevision, CancellationToken cancellationToken)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.Vectors
+            .Where(v => v.VectorSpaceRevision == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(v => v.VectorSpaceRevision, vectorSpaceRevision), cancellationToken);
+    }
+
     private static IQueryable<VectorEntity> OutsideSpace(FluxIndexDbContext context, string vectorSpaceRevision) =>
         context.Vectors.Where(v => v.VectorSpaceRevision == null || v.VectorSpaceRevision != vectorSpaceRevision);
 

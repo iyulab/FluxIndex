@@ -81,6 +81,20 @@ public sealed class SQLiteVecVectorSpaceTests : IDisposable
     }
 
     [Fact]
+    public async Task Adopt_GivesVectorsWithoutARevisionTheOneTheIndexWasBuiltIn_AndLeavesTheRest()
+    {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+        await Store().StoreBatchAsync([Chunk(0, revision: null), Chunk(1, revision: null), Chunk(2, "B"), Chunk(3, "A")], Ct);
+
+        (await Store().AdoptUnrecordedVectorsAsync("A", Ct)).Should().Be(2);
+
+        var restarted = Store();
+        (await restarted.CountVectorsOutsideSpaceAsync("A", Ct)).Should().Be(1, "only c02 was computed in another revision");
+        (await restarted.GetChunkIdsOutsideSpaceAsync("A", 10, Ct)).Should().Equal("c02");
+        (await restarted.AdoptUnrecordedVectorsAsync("A", Ct)).Should().Be(0);
+    }
+
+    [Fact]
     public async Task ReadingAChunkBack_ReturnsTheRevisionItsVectorWasComputedIn()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();

@@ -43,7 +43,10 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   the next so a call cut short continues where it stopped. Stores: in-memory, sqlite-vec, plain SQLite, PostgreSQL and Qdrant
   (`IVectorStore.CountVectorsOutsideSpaceAsync` / `GetChunkIdsOutsideSpaceAsync`; the quantized stores and a custom store
   that does not keep revisions answer null). Vectors written before a store kept
-  revisions count as outside.
+  revisions count as outside; an index whose consumer knows the revision it was built in takes it with
+  `IVectorStore.AdoptUnrecordedVectorsAsync(revision)` — recorded on every vector without one, nothing re-embedded — so an
+  upgrade does not re-embed everything. A writer other than the indexer records the revision with
+  `embeddingService.StampVectorSpace(chunks)` after embedding and before its store write.
 - **Batch indexing** — `Indexer.IndexBatchAsync(documents, progress, parallelism)`; chunk embeddings go through
   `IEmbeddingService.GenerateEmbeddingsBatchAsync`. A document that cannot be indexed does not stop the batch, and is not
   dropped silently: the others are written, then `BatchIndexingException` names each one left out (`Failures`) and the

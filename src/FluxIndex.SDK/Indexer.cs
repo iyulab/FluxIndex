@@ -1296,7 +1296,7 @@ public partial class Indexer
             for (var i = 0; i < chunks.Count; i++)
                 chunks[i].Embedding = embeddings[i];
 
-            StampVectorSpace(chunks);
+            _embeddingService.StampVectorSpace(chunks);
             LogBatchEmbeddingCompleted(_logger, chunks.Count);
             return true;
         }
@@ -1315,27 +1315,8 @@ public partial class Indexer
         if (chunks.Count == 0 || IsKeywordOnly) return chunks;
 
         var embedded = await EmbedChunksAsync(chunks, cancellationToken);
-        StampVectorSpace(embedded);
+        _embeddingService.StampVectorSpace(embedded);
         return embedded;
-    }
-
-    /// <summary>
-    /// Records on every chunk that got a vector the vector-space revision the embedding service reports now — after
-    /// embedding, so a service that loads its model lazily already knows it. A store that keeps it can then say which
-    /// vectors a later revision has not re-embedded (<see cref="IVectorStore.CountVectorsOutsideSpaceAsync"/>).
-    /// </summary>
-    private void StampVectorSpace(IEnumerable<DocumentChunkEntity> chunks)
-    {
-        // A test double that never configured GetIdentity returns null; indexing must not fail on the stamp.
-        if (_embeddingService.GetIdentity() is not { } identity)
-            return;
-
-        var revision = identity.VectorSpaceRevision;
-        foreach (var chunk in chunks)
-        {
-            if (chunk.Embedding is { Length: > 0 })
-                chunk.VectorSpaceRevision = revision;
-        }
     }
 
     private async Task<List<DocumentChunkEntity>> EmbedChunksAsync(

@@ -288,6 +288,17 @@ public interface IVectorStore
         Task.FromResult<IReadOnlyList<string>?>(null);
 
     /// <summary>
+    /// Records <paramref name="vectorSpaceRevision"/> as the revision of every stored vector that has none — one written before
+    /// the store kept revisions, or by a writer that reported none — without re-embedding anything. For a consumer that knows
+    /// which revision its index was built in: after the adoption, <see cref="CountVectorsOutsideSpaceAsync"/> counts only the
+    /// vectors computed in another revision, so an index carried over from an earlier release is not re-embedded for nothing.
+    /// Vectors that already have a revision are not changed.
+    /// </summary>
+    /// <returns>How many vectors were given the revision, or null when this store does not keep the revision of its vectors (the default).</returns>
+    Task<int?> AdoptUnrecordedVectorsAsync(string vectorSpaceRevision, CancellationToken cancellationToken = default) =>
+        Task.FromResult<int?>(null);
+
+    /// <summary>
     /// Verifies that the vector store is operational by testing a write+delete cycle.
     /// Returns false if the store is corrupted and attempts self-healing.
     /// </summary>

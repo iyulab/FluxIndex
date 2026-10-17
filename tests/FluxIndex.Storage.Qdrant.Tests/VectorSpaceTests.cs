@@ -81,4 +81,23 @@ public class VectorSpaceTests : IAsyncLifetime
         ids.Should().BeEquivalentTo(["chunk-03", "chunk-04", "chunk-05", "chunk-06", "chunk-07", "chunk-08", "chunk-09"]);
         (await restarted.GetAsync("chunk-01", ct))!.VectorSpaceRevision.Should().Be("B");
     }
+
+    [Fact]
+    public async Task Adopt_GivesPointsWithoutARevisionTheOneTheIndexWasBuiltIn_AndLeavesTheRest()
+    {
+        Assert.SkipUnless(_started, "Docker is not available");
+        var ct = TestContext.Current.CancellationToken;
+        var collection = $"adopt_{Guid.NewGuid():N}";
+        await using (var first = Store(collection))
+        {
+            await first.StoreBatchAsync([Chunk(0, revision: null), Chunk(1, revision: null), Chunk(2, "B"), Chunk(3, "A")], ct);
+            (await first.AdoptUnrecordedVectorsAsync("A", ct)).Should().Be(2);
+        }
+
+        await using var restarted = Store(collection);
+        (await restarted.CountVectorsOutsideSpaceAsync("A", ct)).Should().Be(1, "only chunk-02 was computed in another revision");
+        (await restarted.GetAsync("chunk-00", ct))!.VectorSpaceRevision.Should().Be("A");
+        (await restarted.GetAsync("chunk-02", ct))!.VectorSpaceRevision.Should().Be("B");
+        (await restarted.AdoptUnrecordedVectorsAsync("A", ct)).Should().Be(0);
+    }
 }

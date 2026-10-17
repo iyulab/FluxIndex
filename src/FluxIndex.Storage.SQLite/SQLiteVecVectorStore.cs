@@ -2184,6 +2184,32 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             .ToListAsync(cancellationToken);
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Gives the vectors of the bound fingerprint's vec0 table that have no recorded revision (no row in
+    /// <c>fluxindex_vector_space</c>, or a row without one) <paramref name="vectorSpaceRevision"/>. 0 when no identity is bound.
+    /// </remarks>
+    public async Task<int?> AdoptUnrecordedVectorsAsync(string vectorSpaceRevision, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(vectorSpaceRevision);
+        await EnsureInitializedAsync(cancellationToken);
+        if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
+            return await _fallbackStore.Value.AdoptUnrecordedVectorsAsync(vectorSpaceRevision, cancellationToken);
+        if (!VecTableActive)
+            return 0;
+
+        await using var context = await OpenContextAsync(cancellationToken);
+        await EnsureVectorSpaceTableAsync(context, cancellationToken);
+        // The vec0 table name is a sanitized identifier (chunk_embeddings_{hex}); the values are parameters. The WHERE keeps
+        // SQLite's upsert-after-SELECT parse unambiguous and selects exactly the vectors without a revision.
+        var sql = "INSERT INTO fluxindex_vector_space (fingerprint, chunk_id, revision) " +
+                  "SELECT {0}, e.chunk_id, {1} FROM " + _options.GetVecTableName() + " e " +
+                  "LEFT JOIN fluxindex_vector_space s ON s.fingerprint = {0} AND s.chunk_id = e.chunk_id " +
+                  "WHERE s.revision IS NULL " +
+                  "ON CONFLICT (fingerprint, chunk_id) DO UPDATE SET revision = excluded.revision WHERE fluxindex_vector_space.revision IS NULL";
+        return await context.Database.ExecuteSqlRawAsync(sql, [_options.EmbeddingFingerprint!, vectorSpaceRevision], cancellationToken);
+    }
+
     private static Task<int> EnsureIdentityTableAsync(SQLiteVecDbContext context, CancellationToken cancellationToken) =>
         context.Database.ExecuteSqlRawAsync(
             "CREATE TABLE IF NOT EXISTS fluxindex_vector_identity (store_key TEXT PRIMARY KEY, identity_record TEXT NOT NULL)",

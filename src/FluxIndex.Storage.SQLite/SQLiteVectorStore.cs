@@ -303,6 +303,16 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
             .ToListAsync(cancellationToken);
     }
 
+    /// <inheritdoc />
+    protected override async Task<int?> AdoptUnrecordedVectorsCoreAsync(string vectorSpaceRevision, CancellationToken cancellationToken)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.Vectors
+            .Where(v => v.Embedding != null && v.VectorSpaceRevision == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(v => v.VectorSpaceRevision, vectorSpaceRevision), cancellationToken);
+    }
+
     /// <summary>Rows that hold a vector not computed in <paramref name="vectorSpaceRevision"/> (or whose revision was never recorded).</summary>
     private static IQueryable<VectorEntity> OutsideSpace(SQLiteDbContext context, string vectorSpaceRevision) =>
         context.Vectors.Where(v => v.Embedding != null && (v.VectorSpaceRevision == null || v.VectorSpaceRevision != vectorSpaceRevision));

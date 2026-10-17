@@ -172,6 +172,20 @@ public abstract partial class VectorStoreBase : IVectorStore
         return GetChunkIdsOutsideSpaceCoreAsync(vectorSpaceRevision, limit, cancellationToken);
     }
 
+    /// <inheritdoc />
+    public Task<int?> AdoptUnrecordedVectorsAsync(string vectorSpaceRevision, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(vectorSpaceRevision);
+        return AdoptUnrecordedVectorsCoreAsync(vectorSpaceRevision, cancellationToken);
+    }
+
+    /// <summary>
+    /// Records <paramref name="vectorSpaceRevision"/> on the stored vectors that have no revision and returns how many. The
+    /// default keeps no revision and answers null.
+    /// </summary>
+    protected virtual Task<int?> AdoptUnrecordedVectorsCoreAsync(string vectorSpaceRevision, CancellationToken cancellationToken) =>
+        Task.FromResult<int?>(null);
+
     /// <summary>
     /// Counts the vectors whose recorded <see cref="DocumentChunk.VectorSpaceRevision"/> is not
     /// <paramref name="vectorSpaceRevision"/> (or is missing). The default keeps no revision and answers null.
