@@ -7,6 +7,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Fixed
+- **`FluxIndex.Cache.Redis` has a package description** — its nuget.org page showed the SDK default «Package Description».
+
 ### Dependencies
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.123.0 -> 0.124.0, `LMSupply.Generator` 0.123.0 -> 0.124.0, `LMSupply.Reranker` 0.123.0 -> 0.124.0.
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.124.0 -> 0.125.0, `LMSupply.Generator` 0.124.0 -> 0.125.0, `LMSupply.Reranker` 0.124.0 -> 0.125.0.

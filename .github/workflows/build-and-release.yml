@@ -14,6 +14,9 @@ on:
       # job. Without them a test-only or CI-only change never exercised the gate it modified, and
       # the next release was the first run to use it.
       - 'tests/**'
+      # The solution builds the CLI tool and the samples too; a change to either alone has to be built.
+      - 'cli/**'
+      - 'samples/**'
       - 'scripts/**'
       - '.github/workflows/build-and-release.yml'
 

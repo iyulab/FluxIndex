@@ -9,6 +9,7 @@
     <RootNamespace>FluxIndex.Cache.Redis</RootNamespace>
     <IsPackable>true</IsPackable>
     <PackageId>FluxIndex.Cache.Redis</PackageId>
+    <Description>Redis for FluxIndex: a semantic query cache (hits by query-embedding similarity) and an ICacheStore for embedding, query-result and entity caching.</Description>
   </PropertyGroup>
 
   <ItemGroup>
