@@ -466,8 +466,7 @@ public partial class HybridSearchService : IHybridSearchService
     private static HybridSearchStrategy DetermineOptimalStrategy(QueryCharacteristics characteristics)
     {
         // A CJK query is vector-first at any length (see QueryCharacteristics.ContainsCjk); otherwise the whitespace length
-        // stands for the query's shape - short lookups lean on the keyword leg (BEIR NFCorpus: this heuristic beats every
-        // fixed weighting), long natural-language queries on the vector leg.
+        // stands for the query's shape - short lookups lean on the keyword leg, long natural-language queries on the vector leg.
         var strategyType = characteristics.ContainsCjk
             ? SearchStrategyType.VectorFirst
             : characteristics.Length switch
@@ -477,16 +476,17 @@ public partial class HybridSearchService : IHybridSearchService
                 _ => SearchStrategyType.VectorFirst     // 긴 자연어 쿼리
             };
 
-        var fusionMethod = characteristics.ContainsTechnicalTerms
-            ? FusionMethod.WeightedSum  // 전문용어는 가중합
-            : FusionMethod.RRF;         // 일반적으로는 RRF
+        // Relative score fusion (each leg's scores min-max normalized, then a convex combination) with weights near the
+        // middle: normalized scores already carry each leg's confidence, so the lean stays mild. Measured against the former
+        // default (RRF 0.3/0.6/0.8, WeightedSum for technical terms) on four sets, nDCG@10: MIRACL-ko +0.017, AutoRAG-ko
+        // (held out) +0.058, SciFact +0.031, NFCorpus -0.003.
+        var fusionMethod = FusionMethod.RelativeScoreFusion;
 
         var weights = strategyType switch
         {
-            SearchStrategyType.VectorFirst => (0.8, 0.2),
-            SearchStrategyType.SparseFirst => (0.3, 0.7),
-            SearchStrategyType.Balanced => (0.6, 0.4),
-            _ => (0.7, 0.3)
+            SearchStrategyType.VectorFirst => (0.6, 0.4),
+            SearchStrategyType.SparseFirst => (0.4, 0.6),
+            _ => (0.5, 0.5)
         };
 
         return new HybridSearchStrategy

@@ -69,19 +69,20 @@ public class HybridSearchFusionSelectionTests
         var results = await CreateService().SearchAsync(Query, new HybridSearchOptions(), TestContext.Current.CancellationToken);
 
         Assert.All(results, r => Assert.Equal(
-            new AppliedFusion(FusionMethod.RRF, 0.8, 0.2, 60, FusionSelection.QueryHeuristic), r.Fusion));
+            new AppliedFusion(FusionMethod.RelativeScoreFusion, 0.6, 0.4, 60, FusionSelection.QueryHeuristic), r.Fusion));
     }
 
     [Theory]
-    [InlineData("중국의 수도는?", 0.8, 0.2)]      // two whitespace tokens, but a whole Korean question: vector first
-    [InlineData("東京都の人口", 0.8, 0.2)]          // Japanese, no spaces at all
-    [InlineData("battery drain", 0.3, 0.7)]     // a two-word English lookup still leans on the keyword leg
+    [InlineData("중국의 수도는?", 0.6, 0.4)]      // two whitespace tokens, but a whole Korean question: vector first
+    [InlineData("東京都の人口", 0.6, 0.4)]          // Japanese, no spaces at all
+    [InlineData("battery drain", 0.4, 0.6)]     // a two-word English lookup still leans on the keyword leg
+    [InlineData("archived invoice retention policy", 0.5, 0.5)] // a middle-length English query is balanced
     public async Task SearchAsync_NothingSet_ACjkQueryIsVectorFirst_AtAnyLength(string query, double vector, double sparse)
     {
         var results = await CreateService().SearchAsync(query, new HybridSearchOptions(), TestContext.Current.CancellationToken);
 
         Assert.All(results, r => Assert.Equal(
-            new AppliedFusion(FusionMethod.RRF, vector, sparse, 60, FusionSelection.QueryHeuristic), r.Fusion));
+            new AppliedFusion(FusionMethod.RelativeScoreFusion, vector, sparse, 60, FusionSelection.QueryHeuristic), r.Fusion));
     }
 
     [Fact]
@@ -94,7 +95,7 @@ public class HybridSearchFusionSelectionTests
         }, TestContext.Current.CancellationToken);
 
         Assert.All(results, r => Assert.Equal(
-            new AppliedFusion(FusionMethod.RRF, 0.0, 1.0, 60, FusionSelection.QueryHeuristic), r.Fusion));
+            new AppliedFusion(FusionMethod.RelativeScoreFusion, 0.0, 1.0, 60, FusionSelection.QueryHeuristic), r.Fusion));
         // A keyword-only weighting gives a vector-only row no score at all.
         Assert.Equal(0.0, results.Single(r => r.Chunk.Id == "a").FusedScore);
     }

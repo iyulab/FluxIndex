@@ -7,6 +7,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Changed
+- **Breaking: hybrid search fuses by relative score when the service chooses the fusion.** With `FusionMethod`,
+  `VectorWeight` or `SparseWeight` left unset (and no Dynamic Alpha Tuning), `IHybridSearchService` now min-max normalizes
+  each leg's scores and combines them — vector weight 0.6 for a CJK query or one of six or more words, 0.5 for three to five,
+  0.4 for one or two — instead of RRF 0.8 / 0.6 / 0.3 (and weighted sum for technical terms). Ranking quality, nDCG@10 against
+  the former default: MIRACL-ko +0.017, AutoRAG-ko +0.058, SciFact +0.031, NFCorpus −0.003. Two things a caller sees:
+  the order of results changes, and `FusedScore` (the SDK's hybrid `Score`) is now on a 0–1 scale where RRF gave about
+  0.01–0.03 — a `MinFusedScore` or a threshold you apply to hybrid scores needs a new value. Migration (to keep the old
+  ranking and scale): set `FusionMethod = FusionMethod.RRF`, `VectorWeight = 0.8`, `SparseWeight = 0.2` (or the SDK's
+  `SearchOptions` equivalents). `QueryCharacteristics.ContainsTechnicalTerms` is still reported; it no longer picks the
+  method.
+
 ### Fixed
 - **`FluxIndex.Cache.Redis` has a package description** — its nuget.org page showed the SDK default «Package Description».
 

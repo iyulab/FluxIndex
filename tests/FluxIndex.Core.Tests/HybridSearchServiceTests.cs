@@ -175,16 +175,17 @@ public class HybridSearchServiceTests
     }
 
     [Theory]
-    [InlineData("please email the maintainers about the rain", FusionMethod.RRF)]
-    [InlineData("html table layout", FusionMethod.RRF)]
-    [InlineData("REST API design", FusionMethod.WeightedSum)]
-    [InlineData("what is AI?", FusionMethod.WeightedSum)]
-    public async Task RecommendSearchStrategy_TreatsATechnicalTermAsAWholeToken_NotASubstring(string query, FusionMethod expected)
+    [InlineData("please email the maintainers about the rain", false)]
+    [InlineData("html table layout", false)]
+    [InlineData("REST API design", true)]
+    [InlineData("what is AI?", true)]
+    public async Task RecommendSearchStrategy_TreatsATechnicalTermAsAWholeToken_NotASubstring(string query, bool technical)
     {
         var strategy = await _service.RecommendSearchStrategyAsync(query, TestContext.Current.CancellationToken);
 
-        Assert.Equal(expected, strategy.RecommendedFusion);
-        Assert.Equal(expected == FusionMethod.WeightedSum, strategy.QueryCharacteristics.ContainsTechnicalTerms);
+        Assert.Equal(technical, strategy.QueryCharacteristics.ContainsTechnicalTerms);
+        // Technical terms no longer switch the fusion method: every heuristic choice is relative score fusion.
+        Assert.Equal(FusionMethod.RelativeScoreFusion, strategy.RecommendedFusion);
     }
 
     // The characteristics carry what the strategy is chosen from — the token count — and the strategy follows it.

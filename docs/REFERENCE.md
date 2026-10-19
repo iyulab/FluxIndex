@@ -196,9 +196,14 @@ User Query
 
 ### Fusion Methods
 
-**Reciprocal Rank Fusion (RRF)** - Default
+**Relative Score Fusion (RSF)** - Default when the service chooses
 ```
-FinalScore = Σ 1/(k + rank)  where k = 60
+FinalScore = α × minmax(vectorScore) + (1-α) × minmax(sparseScore)   (each leg normalized per query; 0 for a leg that missed the row)
+```
+
+**Reciprocal Rank Fusion (RRF)**
+```
+FinalScore = Σ w/(k + rank)  where k = 60
 ```
 
 **Weighted Sum**
@@ -224,8 +229,11 @@ var results = await hybridSearch.SearchAsync(query, options);
 
 Leave any of the three unset (null) and the service chooses it per query — Dynamic Alpha Tuning when
 `EnableDynamicAlphaTuning` is on, otherwise a query heuristic: a query with Korean, Japanese or Chinese text is
-vector-first (RRF 0.8 / 0.2); otherwise one or two words lean on the keyword leg (0.3 / 0.7), three to five are balanced
-(0.6 / 0.4) and longer queries are vector-first, with weighted-sum fusion when the query names a technical term. The SDK builder and `AddFluxIndexCore()`
+vector-first (0.6 / 0.4); otherwise one or two words lean on the keyword leg (0.4 / 0.6), three to five are balanced
+(0.5 / 0.5) and longer queries are vector-first (0.6 / 0.4) — all with relative score fusion, so `FusedScore` is on a
+0–1 scale (the RRF it replaced gave about 0.01–0.03). Through FluxIndex 0.102 the heuristic used RRF with vector weights
+0.8 (CJK, long) / 0.6 (middle) / 0.3 (short) and weighted sum for technical terms; set `FusionMethod = RRF` and the weights
+yourself to keep that ranking. The SDK builder and `AddFluxIndexCore()`
 register the tuning service; a hybrid service built without one throws `InvalidOperationException` when the option is
 on (since 0.93.0 — before, it fell back to the heuristic without saying so). `AppliedFusion.SelectedBy` says which: `Caller`, `DynamicAlphaTuning`, `QueryHeuristic`, or
 `ServiceDefault` (Qdrant's native hybrid fills unset values with RRF 0.7 / 0.3).
