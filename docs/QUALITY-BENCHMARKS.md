@@ -23,5 +23,17 @@ different layer.
 
 ## Status
 
-Not yet measured. Results will be added here with the package version, the embedding model, the reranker and the fusion
-settings they were measured with.
+**Default hybrid fusion (measured 2026-10, nDCG@10, no reranker, SQLite store).** Embedding model BAAI/bge-m3 (GGUF on
+llama-server for the Korean sets, ONNX for the English ones); keyword leg with the CJK bigram analyzer. «Former» is the
+default through 0.102 (RRF; vector weight 0.8 for CJK or long queries, 0.6 middle, 0.3 short; weighted sum for technical terms),
+«current» the relative-score-fusion default that replaced it (vector weight 0.6 CJK or long, 0.5 middle, 0.4 short).
+
+| Set | Queries | Vector only | Keyword only | Former default | Current default |
+|---|---|---|---|---|---|
+| MIRACL-ko (dev, full hard-negatives corpus, 43,293 passages) | 213 | 0.7024 | 0.4079 | 0.7083 | **0.7257** |
+| AutoRAG-ko (`mteb/AutoRAGRetrieval` test, 720 passages) | 114 | 0.8298 | 0.9183 | 0.8581 | **0.9164** |
+| BEIR SciFact (test) | 300 | 0.6435 | 0.6629 | 0.6749 | **0.7062** |
+| BEIR NFCorpus (test) | 323 | 0.3150 | 0.3055 | **0.3472** | 0.3444 |
+
+The weights were chosen on MIRACL-ko, SciFact and NFCorpus; AutoRAG-ko was measured afterwards. Fitting the weight to an index's
+own labelled queries did not beat these fixed values on any set.
