@@ -30,6 +30,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.127.0 -> 0.128.0, `LMSupply.Generator` 0.127.0 -> 0.128.0, `LMSupply.Reranker` 0.127.0 -> 0.128.0.
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.24.0 -> 0.25.0.
 - Re-pinned sibling package(s) `FluxCurator` 0.17.0 -> 0.18.0, `FluxImprover` 0.20.0 -> 0.21.0.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.128.0 -> 0.129.0, `LMSupply.Generator` 0.128.0 -> 0.129.0, `LMSupply.Reranker` 0.128.0 -> 0.129.0.
 
 ---
 
