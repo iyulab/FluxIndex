@@ -11,7 +11,7 @@
     <!-- OpenAI .NET SDK: only for compiling the provider guide's own-implementation samples (SDK tests) -->
     <PackageVersion Include="OpenAI" Version="2.14.0" />
     <!-- FluxGuard (opt-in RAG security — FluxIndex.Integrations.FluxGuard) -->
-    <PackageVersion Include="FluxGuard.Remote" Version="0.25.0" />
+    <PackageVersion Include="FluxGuard.Remote" Version="0.25.1" />
     <!-- Caching -->
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.13" />
@@ -50,9 +50,9 @@
   <!-- AI/ML Packages -->
   <ItemGroup>
     <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
-    <PackageVersion Include="LMSupply.Embedder" Version="0.131.0" />
-    <PackageVersion Include="LMSupply.Generator" Version="0.131.0" />
-    <PackageVersion Include="LMSupply.Reranker" Version="0.131.0" />
+    <PackageVersion Include="LMSupply.Embedder" Version="0.132.0" />
+    <PackageVersion Include="LMSupply.Generator" Version="0.132.0" />
+    <PackageVersion Include="LMSupply.Reranker" Version="0.132.0" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
@@ -76,7 +76,7 @@
   <!-- Document Processing & Quality -->
   <ItemGroup>
     <PackageVersion Include="FileFlux" Version="0.65.1" />
-    <PackageVersion Include="FluxCurator" Version="0.18.0" />
+    <PackageVersion Include="FluxCurator" Version="0.18.1" />
     <PackageVersion Include="FluxImprover" Version="0.22.0" />
     <PackageVersion Include="WebFlux" Version="0.26.1" />
   </ItemGroup>
