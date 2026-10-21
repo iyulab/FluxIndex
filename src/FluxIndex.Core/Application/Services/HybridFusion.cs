@@ -153,7 +153,9 @@ public static class HybridFusion
             return (0.0, 1.0);
         var min = list.Min();
         var range = list.Max() - min;
-        return (min, range == 0 ? 1.0 : range);
+        // Every hit of a leg scored the same (a lone hit, or a tie): each is that leg's best, so it normalises to 1, not 0 —
+        // (score - min) / range with min = score - 1 gives exactly that.
+        return range == 0 ? (min - 1.0, 1.0) : (min, range);
     }
 
     private static List<HybridSearchResult> FuseWith(
@@ -438,22 +440,9 @@ public static class HybridFusion
 
         var fusedResults = new Dictionary<string, HybridSearchResult>();
 
-        // Calculate min-max normalization bounds for each retriever
-        var vectorScores = vectorResults.Select(r => r.Score).ToList();
-        var sparseScores = sparseResults.Select(r => r.Score).ToList();
-
-        var (vectorMin, vectorMax) = vectorScores.Count > 0
-            ? (vectorScores.Min(), vectorScores.Max())
-            : (0.0, 1.0);
-        var (sparseMin, sparseMax) = sparseScores.Count > 0
-            ? (sparseScores.Min(), sparseScores.Max())
-            : (0.0, 1.0);
-
-        // Avoid division by zero
-        var vectorRange = vectorMax - vectorMin;
-        var sparseRange = sparseMax - sparseMin;
-        if (vectorRange == 0) vectorRange = 1.0;
-        if (sparseRange == 0) sparseRange = 1.0;
+        // Min-max normalization bounds for each retriever
+        var (vectorMin, vectorRange) = Bounds(vectorResults.Select(r => r.Score));
+        var (sparseMin, sparseRange) = Bounds(sparseResults.Select(r => r.Score));
 
         // Process vector results
         for (var i = 0; i < vectorResults.Count; i++)

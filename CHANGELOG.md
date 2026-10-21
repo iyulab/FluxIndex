@@ -5,6 +5,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **A hybrid hit that only one leg found — or a leg whose hits all scored the same — no longer counts as zero under relative score
+  fusion.** Min-max normalisation of a leg without spread (one keyword match, a tie) gave every hit 0, so a document matched only by
+  its keyword leg ranked below every vector hit; such hits are now their leg's best (1). RelativeScoreFusion is the default when the
+  service chooses the fusion (0.103.0), so plain hybrid queries with a single keyword match were affected. The confidence of a row from
+  such a leg rises the same way, and a graph leg with tied scores is treated alike.
+
 ## [0.103.0] - 2026-10-21
 
 ### Changed

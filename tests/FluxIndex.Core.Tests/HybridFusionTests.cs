@@ -122,4 +122,42 @@ public class HybridFusionTests
         Assert.True(new HybridSearchResult { Source = SearchSource.Both | SearchSource.Graph, Confidence = 0.9 }.IsHighConfidence);
         Assert.False(new HybridSearchResult { Source = SearchSource.Vector | SearchSource.Graph, Confidence = 0.9 }.IsHighConfidence);
     }
+
+    [Fact]
+    public void RelativeScoreFusion_ALoneKeywordHit_CountsAsItsLegsBest()
+    {
+        // A keyword leg with one hit (or all hits tied) has no spread to normalise over. The hit is that leg's best and
+        // must carry the full sparse weight — min-max with a zero range used to turn it into 0.
+        IReadOnlyList<VectorSearchResult> vector =
+        [
+            new() { DocumentChunk = new DocumentChunk { Id = "a" }, Score = 0.9, Rank = 1 },
+            new() { DocumentChunk = new DocumentChunk { Id = "b" }, Score = 0.5, Rank = 2 },
+            new() { DocumentChunk = new DocumentChunk { Id = "c" }, Score = 0.4, Rank = 3 },
+        ];
+        IReadOnlyList<SparseSearchResult> sparse =
+        [
+            new() { Chunk = new DocumentChunk { Id = "k" }, Score = 3.1, MatchedTerms = ["x"] },
+        ];
+        var fusion = new AppliedFusion(FusionMethod.RelativeScoreFusion, 0.4, 0.6, 60, FusionSelection.Caller);
+
+        var rows = HybridFusion.Fuse(vector, sparse, fusion, maxResults: 10, minFusedScore: 0);
+
+        Assert.Equal("k", rows[0].Chunk.Id);
+        Assert.Equal(0.6, rows[0].FusedScore, precision: 9);
+    }
+
+    [Fact]
+    public void RelativeScoreFusion_TiedVectorHits_AllNormaliseToOne()
+    {
+        IReadOnlyList<VectorSearchResult> vector =
+        [
+            new() { DocumentChunk = new DocumentChunk { Id = "a" }, Score = 0.7, Rank = 1 },
+            new() { DocumentChunk = new DocumentChunk { Id = "b" }, Score = 0.7, Rank = 2 },
+        ];
+        var fusion = new AppliedFusion(FusionMethod.RelativeScoreFusion, 0.4, 0.6, 60, FusionSelection.Caller);
+
+        var rows = HybridFusion.Fuse(vector, [], fusion, maxResults: 10, minFusedScore: 0);
+
+        Assert.All(rows, r => Assert.Equal(0.4, r.FusedScore, precision: 9));
+    }
 }
