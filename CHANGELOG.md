@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.103.1] - 2026-10-21
 
 ### Fixed
 - **A hybrid hit that only one leg found — or a leg whose hits all scored the same — no longer counts as zero under relative score
