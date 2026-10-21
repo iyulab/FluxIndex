@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.103.0] - 2026-10-21
 
 ### Changed
 - **Breaking: hybrid search fuses by relative score when the service chooses the fusion.** With `FusionMethod`,
