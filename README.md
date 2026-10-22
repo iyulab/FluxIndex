@@ -120,19 +120,15 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   two different questions can share an answer — within one scope only: a filtered search reads and fills the entries of
   its filter's scope (`FilterScope.Of`), so two tenants asking the same question never share an answer. Every indexer
   write empties it, and `Build()` refuses an opted-in provider nobody registered or two registered caches.
-- **Document processing** — PDF/DOCX/TXT via FileFlux, web pages via WebFlux (`FluxIndex.Integrations.*`, opt-in):
+- **Document processing** — PDF/DOCX/TXT via FileFlux (`FluxIndex.Integrations.*`, opt-in):
   `AddFileFluxIntegration` (builder `UseFileFlux`) for parsing and chunking — `FileFluxOptions.EnableMetadataEnrichment` adds AI
   metadata (see «AI metadata on indexing») to each indexed file, and `FileFluxOptions.EnableLlmRefine` (off by default) lets
   FileFlux's LLM refine stage rewrite the text before chunking, here and in the pipeline — `AddDocumentProcessingPipeline` for the
   document processing pipeline — contextual enrichment, QA generation and metadata enrichment run on the services you
   register (`AddFluxIndexFluxImprover` provides the first two); asking for one whose service is missing throws before
-  processing, and `GenerateEmbeddings` left unset embeds only when an embedder is configured — `AddWebFluxIntegration`
-  (builder `UseWebFlux`) for web pages. Text preprocessing: `AddFluxIndexFluxCurator` (registers `IFluxCurator` over your
-  `IEmbeddingService`); LLM chunk enhancement: `AddFluxIndexFluxImprover` (FluxImprover over your
-  `ITextCompletionService`: enrichment, contextual enrichment, QA generation, RAG evaluation and chunk filtering).
-- **MCP server** — `FluxIndex.MCP` is a library: host it with `FluxIndexMcpServer.RunAsync(workspacePath)` or
-  `services.AddFluxIndexMcp(...)` (stdio). Tools: `memorize`, `search` (`strategy`: `hybrid` default · `vector` ·
-  `keyword`), `status`, `unmemorize`. Embedding is local LMSupply (`.vault/config.json` `embedding.model`).
+  processing, and `GenerateEmbeddings` left unset embeds only when an embedder is configured. LLM chunk enhancement:
+  `AddFluxIndexFluxImprover` (FluxImprover over your `ITextCompletionService`: enrichment, contextual enrichment, QA
+  generation, RAG evaluation and chunk filtering). Web pages: crawl and chunk them with WebFlux and index the chunks.
 - **RAG security** (opt-in) — add `FluxIndex.Integrations.FluxGuard`, register a `FluxGuard.Remote`
   `IRAGSecurityPipeline` and call `services.AddFluxGuardRetrievalGuard()` (or register your own `IRetrievalGuard`);
   every `Retriever` search
@@ -289,16 +285,6 @@ Output goes to `<file>_output/` (or `-o`): `extract.md`, `metadata.json`, `chunk
 failures raised by local embedding print the options above as a hint. Settings live in
 `~/.fluxindex/settings.json` (`fluxindex set` lists them).
 
-## MCP Server
-
-FluxIndex provides Model Context Protocol (MCP) server for AI assistant integration.
-
-**Available Tools**: `search`, `memorize`, `unmemorize`, `status`
-
-`FluxIndex.MCP` is a library you host: `FluxIndexMcpServer.RunAsync(workspacePath)` runs a stdio server, or register
-it in your own host with `services.AddFluxIndexMcp(...)`. See the **MCP server** entry under [Key Features](#key-features)
-for the tool parameters and embedding configuration.
-
 ## Package Structure
 
 | Package | NuGet | Description |
@@ -311,13 +297,10 @@ for the tool parameters and embedding configuration.
 | **FluxIndex.Storage.Qdrant** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.Qdrant.svg)](https://www.nuget.org/packages/FluxIndex.Storage.Qdrant/) | Qdrant vector database |
 | **FluxIndex.Cache.Redis** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Cache.Redis.svg)](https://www.nuget.org/packages/FluxIndex.Cache.Redis/) | Redis semantic cache |
 | **FluxIndex.Integrations.FileFlux** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FileFlux.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FileFlux/) | Document parsing/chunking (`AddFileFluxIntegration`) + the document processing pipeline (`AddDocumentProcessingPipeline`) |
-| **FluxIndex.Integrations.WebFlux** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.WebFlux.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.WebFlux/) | Web content ingestion (`AddWebFluxIntegration`) |
-| **FluxIndex.Integrations.FluxCurator** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxCurator.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxCurator/) | Text preprocessing (PII detection, intelligent splitting) (`AddFluxIndexFluxCurator`) |
 | **FluxIndex.Providers.LMSupply** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Providers.LMSupply.svg)](https://www.nuget.org/packages/FluxIndex.Providers.LMSupply/) | Local embedding, reranking and text completion (LMSupply — no API key) |
 | **FluxIndex.Providers.OpenAI** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Providers.OpenAI.svg)](https://www.nuget.org/packages/FluxIndex.Providers.OpenAI/) | OpenAI-compatible embedding and reranking |
 | **FluxIndex.Integrations.FluxImprover** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxImprover.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxImprover/) | LLM-based chunk quality enhancement (`AddFluxIndexFluxImprover`) |
 | **FluxIndex.Integrations.FluxGuard** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxGuard.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxGuard/) | RAG security — search results checked by a FluxGuard `IRAGSecurityPipeline` (`AddFluxGuardRetrievalGuard`) |
-| **FluxIndex.MCP** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.MCP.svg)](https://www.nuget.org/packages/FluxIndex.MCP/) | Model Context Protocol server library (`FluxIndexMcpServer.RunAsync`, `AddFluxIndexMcp`) — see [MCP Server](#mcp-server) |
 
 > **Moved:** File-to-vector synchronization (formerly `FluxIndex.Extensions.FileVault`) was extracted to the **[FluxFeed](https://github.com/iyulab/FluxFeed)** repository in 0.16.0. Install `FluxFeed` for git-like file tracking / folder-monitoring document ingestion; it feeds into FluxIndex.
 
@@ -604,7 +587,7 @@ than quietly returning unscoped results.
 |----------|---------|
 | Embeddings + vector search only (no native deps, no document parsing) | `FluxIndex.Core` + storage |
 | RAG orchestration (context, indexer, retriever) | `FluxIndex.SDK` + storage |
-| Document parsing (PDF, DOCX, HWP) / web crawling | add `FluxIndex.Integrations.FileFlux` / `FluxIndex.Integrations.WebFlux` |
+| Document parsing (PDF, DOCX, HWP) | add `FluxIndex.Integrations.FileFlux` |
 | File system monitoring + auto-indexing (document ingestion) | [`FluxFeed`](https://github.com/iyulab/FluxFeed) (feeds into FluxIndex) |
 | Local AI embedding (ONNX, no API key required) | `FluxIndex.Providers.LMSupply` |
 
@@ -621,7 +604,6 @@ dotnet add package FluxIndex.Storage.SQLite
 dotnet add package FluxIndex.SDK
 dotnet add package FluxIndex.Storage.SQLite
 dotnet add package FluxIndex.Integrations.FileFlux   # PDF, DOCX, HWP parsing (optional)
-dotnet add package FluxIndex.Integrations.WebFlux    # web crawling (optional)
 ```
 
 ## Documentation
@@ -635,7 +617,6 @@ dotnet add package FluxIndex.Integrations.WebFlux    # web crawling (optional)
 ## Examples
 
 - [RealQualityTest](./samples/RealQualityTest/) - LMSupply + SQLite integration
-- [WebFluxSample](./samples/WebFluxSample/) - Web crawling with WebFlux
 
 ## Requirements
 

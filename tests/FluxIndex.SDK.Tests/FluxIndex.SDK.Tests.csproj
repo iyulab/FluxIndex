@@ -21,7 +21,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Integrations.FileFlux\FluxIndex.Integrations.FileFlux.csproj" />
-    <ProjectReference Include="..\..\src\FluxIndex.Integrations.WebFlux\FluxIndex.Integrations.WebFlux.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Storage.Neo4j\FluxIndex.Storage.Neo4j.csproj" />
@@ -31,12 +30,10 @@
          would otherwise be reported as unread. -->
     <ProjectReference Include="..\..\src\FluxIndex.Storage.PostgreSQL\FluxIndex.Storage.PostgreSQL.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Cache.Redis\FluxIndex.Cache.Redis.csproj" />
-    <ProjectReference Include="..\..\src\FluxIndex.Integrations.FluxCurator\FluxIndex.Integrations.FluxCurator.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Integrations.FluxImprover\FluxIndex.Integrations.FluxImprover.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Integrations.FluxGuard\FluxIndex.Integrations.FluxGuard.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Providers.LMSupply\FluxIndex.Providers.LMSupply.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Providers.OpenAI\FluxIndex.Providers.OpenAI.csproj" />
-    <ProjectReference Include="..\..\src\FluxIndex.MCP\FluxIndex.MCP.csproj" />
     <!-- Shared IVectorStore filter-contract suite (VectorStoreFilterContractSuite) -->
     <ProjectReference Include="..\FluxIndex.Core.Tests\FluxIndex.Core.Tests.csproj" />
   </ItemGroup>

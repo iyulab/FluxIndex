@@ -5,6 +5,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Removed
+- **Breaking: `FluxIndex.Integrations.FluxCurator`, `FluxIndex.Integrations.WebFlux` and `FluxIndex.MCP` are no longer published.**
+  Their last versions stay on nuget.org, marked deprecated. Migration: register FluxCurator's `IFluxCurator` yourself
+  (`services.AddFluxCurator(...)`) where you used `AddFluxIndexFluxCurator`; crawl and chunk web pages with WebFlux and index the
+  chunks with `IFluxIndexContext` (or FluxFeed) where you used `AddWebFluxIntegration`/`UseWebFlux`; host your own MCP server over the
+  SDK where you used `FluxIndexMcpServer`/`AddFluxIndexMcp`. FluxIndex no longer depends on FluxCurator, WebFlux or ModelContextProtocol.
+
 ## [0.103.1] - 2026-10-21
 
 ### Fixed
