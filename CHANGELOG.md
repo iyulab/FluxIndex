@@ -14,6 +14,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   chunks with `IFluxIndexContext` (or FluxFeed) where you used `AddWebFluxIntegration`/`UseWebFlux`; host your own MCP server over the
   SDK where you used `FluxIndexMcpServer`/`AddFluxIndexMcp`. FluxIndex no longer depends on FluxCurator, WebFlux or ModelContextProtocol.
 
+### Dependencies
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.134.0 -> 0.136.0, `LMSupply.Generator` 0.134.0 -> 0.136.0, `LMSupply.Reranker` 0.134.0 -> 0.136.0.
+
 ## [0.103.1] - 2026-10-21
 
 ### Fixed
