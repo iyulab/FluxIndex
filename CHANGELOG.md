@@ -18,6 +18,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.134.0 -> 0.136.0, `LMSupply.Generator` 0.134.0 -> 0.136.0, `LMSupply.Reranker` 0.134.0 -> 0.136.0.
 - Re-pinned sibling package(s) `FileFlux` 0.65.1 -> 0.65.2, `FluxImprover` 0.22.0 -> 0.23.0.
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.25.1 -> 0.26.0.
+- `Neo4j.Driver` 6.3.0 -> 6.4.0, `Qdrant.Client` 1.19.0 -> 1.20.0.
 
 ## [0.103.1] - 2026-10-21
 
