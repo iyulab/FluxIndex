@@ -1,7 +1,7 @@
 <Project>
   <!-- Common Version Management -->
   <PropertyGroup>
-    <Version>0.103.1</Version>
+    <Version>0.104.0</Version>
     <!-- nuget.org «Release Notes»: the GitHub release of this version (its notes are the CHANGELOG section). -->
     <PackageReleaseNotes>https://github.com/iyulab/FluxIndex/releases/tag/v$(Version)</PackageReleaseNotes>
     <AssemblyVersion>$(Version).0</AssemblyVersion>

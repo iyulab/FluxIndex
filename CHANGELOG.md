@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.104.0] - Unreleased
 
 ### Removed
 - **Breaking: `FluxIndex.Integrations.FluxCurator`, `FluxIndex.Integrations.WebFlux` and `FluxIndex.MCP` are no longer published.**
