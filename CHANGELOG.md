@@ -5,6 +5,11 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Dependencies
+- `StackExchange.Redis` 3.4.5 -> 3.4.20.
+
 ## [0.104.0] - 2026-10-24
 
 ### Removed
