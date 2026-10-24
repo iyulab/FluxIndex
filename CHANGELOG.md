@@ -18,6 +18,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Dependencies
 - `StackExchange.Redis` 3.4.5 -> 3.4.20.
+- Re-pinned sibling package(s) `FileFlux` 0.65.2 -> 0.65.3.
 
 ## [0.104.0] - 2026-10-24
 

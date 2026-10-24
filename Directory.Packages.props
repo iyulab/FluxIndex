@@ -74,7 +74,7 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.65.2" />
+    <PackageVersion Include="FileFlux" Version="0.65.3" />
     <PackageVersion Include="FluxImprover" Version="0.23.0" />
   </ItemGroup>
   <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform) -->
