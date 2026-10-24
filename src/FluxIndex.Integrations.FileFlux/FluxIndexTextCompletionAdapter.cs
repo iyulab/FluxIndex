@@ -2,6 +2,7 @@ using FileFlux;
 using FileFlux.Core;
 using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
 using Microsoft.Extensions.Logging;
 using IFileFluxDocumentAnalysisService = FileFlux.IDocumentAnalysisService;
 
@@ -28,8 +29,10 @@ public partial class FluxIndexTextCompletionAdapter : IFileFluxDocumentAnalysisS
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    private static readonly SimpleTokenCounter DefaultTokenCounter = new();
+
     private int CountTokens(string text) =>
-        _tokenCounter?.Count(text) ?? Math.Max(1, text.Length / 4);
+        Math.Max(1, (_tokenCounter ?? DefaultTokenCounter).Count(text));
 
     /// <summary>
     /// Provider information for FileFlux integration

@@ -23,6 +23,9 @@ namespace FluxIndex.SDK;
 /// </summary>
 public partial class Indexer
 {
+    // Chunk sizes and limits below are in tokens; Hangul runs about 1.35 characters per token, Latin prose about 4.
+    private static readonly SimpleTokenCounter TokenCounter = new();
+
     private readonly IVectorStore _vectorStore;
     private readonly IDocumentRepository _documentRepository;
     private readonly IEmbeddingService _embeddingService;
@@ -460,7 +463,7 @@ public partial class Indexer
 
         foreach (var chunk in chunks)
         {
-            var estimatedTokens = chunk.Content.Length / 4;
+            var estimatedTokens = TokenCounter.Count(chunk.Content);
             LogChunkDetails(_logger, chunk.ChunkIndex, chunks.Count, chunk.Content.Length, estimatedTokens);
 
             // SAFETY: Split oversized chunks automatically (WebFlux chunking bug workaround)
@@ -468,9 +471,9 @@ public partial class Indexer
             {
                 LogChunkExceedsTokenLimit(_logger, chunk.ChunkIndex, estimatedTokens);
 
-                // Split into chunks of ~2000 tokens (8000 chars) to be safe
-                const int maxChunkChars = 8000; // ~2000 tokens
+                // Split into pieces of about 2000 tokens, sized in characters at this content's own characters per token
                 var content = chunk.Content;
+                var maxChunkChars = Math.Max(1, (int)(2000L * content.Length / estimatedTokens));
                 var subChunkCount = (int)Math.Ceiling((double)content.Length / maxChunkChars);
 
                 for (int i = 0; i < subChunkCount; i++)
@@ -495,7 +498,8 @@ public partial class Indexer
                     }
 
                     entityChunks.Add(subChunk);
-                    LogSubChunkCreated(_logger, i + 1, subChunkCount, subContent.Length, subContent.Length / 4);
+                    var subTokens = TokenCounter.Count(subContent);
+                    LogSubChunkCreated(_logger, i + 1, subChunkCount, subContent.Length, subTokens);
                 }
 
                 LogSplitOversizedChunk(_logger, chunk.ChunkIndex, subChunkCount);
@@ -1332,7 +1336,7 @@ public partial class Indexer
 
             for (int i = 0; i < texts.Count; i++)
             {
-                var tokens = texts[i].Length / 4;
+                var tokens = TokenCounter.Count(texts[i]);
                 LogTextDetails(_logger, i, texts.Count, texts[i].Length, tokens);
 
                 if (tokens > 8000)
@@ -1582,11 +1586,7 @@ public partial class Indexer
         );
     }
 
-    private static int EstimateTokenCount(string text)
-    {
-        // Simple estimation: ~4 characters per token
-        return text.Length / 4;
-    }
+    private static int EstimateTokenCount(string text) => TokenCounter.Count(text);
 
     /// <summary>
     /// Update document metadata (supports user corrections to AI-extracted metadata)

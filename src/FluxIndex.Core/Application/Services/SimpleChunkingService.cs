@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using TokenEstimation;
 
 namespace FluxIndex.Core.Application.Services;
 
@@ -160,9 +161,5 @@ public class SimpleChunkingService : IChunkingService
         return start;
     }
 
-    private static int EstimateTokenCount(string text)
-    {
-        // Simple estimation: ~4 characters per token
-        return text.Length / 4;
-    }
+    private static int EstimateTokenCount(string text) => CharTokenEstimator.Count(text, CharTokenRatios.O200k);
 }

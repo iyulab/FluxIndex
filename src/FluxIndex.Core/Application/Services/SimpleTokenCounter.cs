@@ -1,24 +1,17 @@
 using FluxIndex.Core.Application.Interfaces;
+using TokenEstimation;
 
 namespace FluxIndex.Core.Application.Services;
 
 /// <summary>
-/// Character-ratio approximation token counter.
-/// Uses ~4 chars/token for Latin text, ~2 chars/token for Korean (CJK).
+/// Character-ratio approximation token counter: each kind of character (Latin letters, Hangul, Kana, Han, digits,
+/// punctuation, whitespace runs) has its own characters-per-token ratio, fitted to o200k_base. English, Korean, mixed
+/// prose, code and JSON each come within a few percent of the real count.
 /// </summary>
 public class SimpleTokenCounter : ITokenCounter
 {
     /// <inheritdoc />
-    public int Count(string text)
-    {
-        if (string.IsNullOrEmpty(text))
-            return 0;
-
-        var koreanChars = text.Count(c => c >= 0xAC00 && c <= 0xD7A3);
-        var otherChars = text.Length - koreanChars;
-
-        return (koreanChars / 2) + (otherChars / 4) + 1;
-    }
+    public int Count(string text) => CharTokenEstimator.Count(text, CharTokenRatios.O200k);
 
     /// <inheritdoc />
     public int Count(IEnumerable<string> texts) => texts.Sum(Count);

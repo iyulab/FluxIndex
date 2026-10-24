@@ -7,6 +7,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Changed
+- **Token estimates count Korean, code and JSON at their real weight.** `SimpleTokenCounter` (the registered `ITokenCounter`),
+  chunk `TokenCount`, the indexer's oversized-chunk check and the FileFlux adapters' fallback now charge each kind of character
+  at its own ratio fitted to o200k_base (Hangul 1.35 characters per token, Latin letters 7, punctuation 1.25 …). Before, Korean
+  was counted at 2–4 characters per token — about 0.4–0.65 of the real count — so a Korean chunk passed the 8,000-token check
+  at about 2.5 times that, and English prose was over-counted by a fifth. **Breaking** (observable counts): stored and reported
+  `TokenCount` values and where an oversized chunk is split change for non-English text. The split is now sized at about
+  2,000 tokens of the chunk's own text rather than 8,000 characters.
+
 ### Dependencies
 - `StackExchange.Redis` 3.4.5 -> 3.4.20.
 
