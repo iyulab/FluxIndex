@@ -304,6 +304,15 @@ failures raised by local embedding print the options above as a hint. Settings l
 
 > **Moved:** File-to-vector synchronization (formerly `FluxIndex.Extensions.FileVault`) was extracted to the **[FluxFeed](https://github.com/iyulab/FluxFeed)** repository in 0.16.0. Install `FluxFeed` for git-like file tracking / folder-monitoring document ingestion; it feeds into FluxIndex.
 
+### Why FluxIndex has its own store contract
+
+`IVectorStore` is document-aware: it replaces a document's chunks with a new version (in one transaction where the backend
+has one), moves chunks to another document id without re-embedding, deletes by metadata filter,
+and records the embedding space each vector was written in (`CountVectorsOutsideSpaceAsync`, `AdoptUnrecordedVectorsAsync`).
+`Microsoft.Extensions.VectorData` collections cover upsert, get, delete and filtered vector search, which is the layer below
+that. FluxIndex therefore ships its own stores (SQLite, sqlite-vec, PostgreSQL, Qdrant) rather than building on VectorData
+connectors. A backend FluxIndex does not ship is added by implementing `IVectorStore` (or deriving from `VectorStoreBase`).
+
 ### Storage capability matrix
 
 `AddSQLiteStorage()` registers the full-scan SQLite store (`SQLiteVectorStore`, the "in-memory scan" row below); the
