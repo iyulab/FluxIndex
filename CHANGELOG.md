@@ -20,6 +20,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - `StackExchange.Redis` 3.4.5 -> 3.4.20.
 - Re-pinned sibling package(s) `FileFlux` 0.65.2 -> 0.65.3.
 - Re-pinned sibling package(s) `FileFlux` 0.65.3 -> 0.66.0.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.136.0 -> 0.137.0, `LMSupply.Generator` 0.136.0 -> 0.137.0, `LMSupply.Reranker` 0.136.0 -> 0.137.0. LMSupply 0.137.0 changes the token estimate it falls back to when a local server reports no usage: Korean text now counts about 2.5x more tokens than before, English slightly fewer, digits more.
 
 ## [0.104.0] - 2026-10-24
 
