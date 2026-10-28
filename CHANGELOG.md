@@ -7,6 +7,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Removed
+- **`FluxIndex.SDK` and `FluxIndex.Providers.OpenAI` no longer depend on `Microsoft.Extensions.Http`**: neither used `AddHttpClient` or `IHttpClientFactory`. `FluxIndex.SDK` called `AddLogging` and `BuildServiceProvider` and had been getting `Microsoft.Extensions.Logging` and `Microsoft.Extensions.DependencyInjection` only through Http, so it now references those two directly - a consumer's resolved graph keeps both. A consumer that relied on Http itself must reference it.
+
 ### Changed
 - Nine private cosine-similarity copies (the Redis caches, the SQLite semantic cache, corrective / self-reflective RAG, the listwise
   reranker, the retrieval verifier, the Leiden and hierarchical-summary services) now call `VectorMathUtilities.CosineSimilarity`.
