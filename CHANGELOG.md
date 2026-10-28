@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.105.0] - 2026-10-28
 
 ### Changed
 - **Token estimates count Korean, code and JSON at their real weight.** `SimpleTokenCounter` (the registered `ITokenCounter`),
