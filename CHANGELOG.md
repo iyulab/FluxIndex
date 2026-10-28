@@ -5,6 +5,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Changed
+- Nine private cosine-similarity copies (the Redis caches, the SQLite semantic cache, corrective / self-reflective RAG, the listwise
+  reranker, the retrieval verifier, the Leiden and hierarchical-summary services) now call `VectorMathUtilities.CosineSimilarity`.
+  Same formula and the same answer for a null, empty, mismatched or zero vector (0); the copies that accumulated in `double` now accumulate
+  in `float` like the shared one, so a similarity can differ in the last digits (at most about 1.3e-6 on 1,024-dimensional vectors).
+
 ## [0.105.0] - 2026-10-28
 
 ### Changed

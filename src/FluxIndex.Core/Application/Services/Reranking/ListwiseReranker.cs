@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -873,24 +874,9 @@ public partial class ListwiseReranker : IListwiseReranker
 
     #region Utility Methods
 
-    private static float CalculateCosineSimilarity(float[] a, float[] b)
-    {
-        if (a.Length != b.Length) return 0;
+    private static float CalculateCosineSimilarity(float[] a, float[] b) =>
+        VectorMathUtilities.CosineSimilarity(a, b);
 
-        var dot = 0.0;
-        var magA = 0.0;
-        var magB = 0.0;
-
-        for (int i = 0; i < a.Length; i++)
-        {
-            dot += a[i] * b[i];
-            magA += a[i] * a[i];
-            magB += b[i] * b[i];
-        }
-
-        var denom = Math.Sqrt(magA) * Math.Sqrt(magB);
-        return denom > 0 ? (float)(dot / denom) : 0;
-    }
 
     private static float CalculateLexicalSimilarity(string query, string content)
     {

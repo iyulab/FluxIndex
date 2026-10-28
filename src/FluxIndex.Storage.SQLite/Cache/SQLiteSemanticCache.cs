@@ -279,23 +279,9 @@ public partial class SQLiteSemanticCache : ISemanticCacheService, IDisposable
         LogUnreadableEntryRemoved(_logger, entry.QueryHash);
     }
 
-    private static float CalculateCosineSimilarity(float[] a, float[] b)
-    {
-        if (a.Length != b.Length || a.Length == 0)
-            return 0f;
+    private static float CalculateCosineSimilarity(float[] a, float[] b) =>
+        VectorMathUtilities.CosineSimilarity(a, b);
 
-        float dotProduct = 0f, normA = 0f, normB = 0f;
-
-        for (int i = 0; i < a.Length; i++)
-        {
-            dotProduct += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
-        }
-
-        var denominator = MathF.Sqrt(normA) * MathF.Sqrt(normB);
-        return denominator > 0 ? dotProduct / denominator : 0f;
-    }
 
     // An unscoped entry keeps the hash an earlier release wrote, so its rows stay addressable; a scoped one hashes the
     // scope with the query, so the same question in two scopes is two entries.

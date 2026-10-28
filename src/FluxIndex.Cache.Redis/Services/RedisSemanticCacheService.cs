@@ -513,25 +513,9 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
     /// <summary>
     /// 코사인 유사도 계산
     /// </summary>
-    private static float CalculateCosineSimilarity(float[] vector1, float[] vector2)
-    {
-        if (vector1.Length != vector2.Length)
-            return 0f;
+    private static float CalculateCosineSimilarity(float[] vector1, float[] vector2) =>
+        VectorMathUtilities.CosineSimilarity(vector1, vector2);
 
-        var dotProduct = 0f;
-        var magnitude1 = 0f;
-        var magnitude2 = 0f;
-
-        for (int i = 0; i < vector1.Length; i++)
-        {
-            dotProduct += vector1[i] * vector2[i];
-            magnitude1 += vector1[i] * vector1[i];
-            magnitude2 += vector2[i] * vector2[i];
-        }
-
-        var magnitudeProduct = (float)(Math.Sqrt(magnitude1) * Math.Sqrt(magnitude2));
-        return magnitudeProduct == 0f ? 0f : dotProduct / magnitudeProduct;
-    }
 
     /// <summary>
     /// 임베딩 벡터 직렬화

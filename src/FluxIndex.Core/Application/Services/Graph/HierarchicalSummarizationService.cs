@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Utilities;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -1040,28 +1041,9 @@ public partial class HierarchicalSummarizationService : IHierarchicalSummarizati
         };
     }
 
-    private static double CalculateCosineSimilarity(EmbeddingVector a, EmbeddingVector b)
-    {
-        var values1 = a.Values;
-        var values2 = b.Values;
+    private static double CalculateCosineSimilarity(EmbeddingVector a, EmbeddingVector b) =>
+        VectorMathUtilities.CosineSimilarity(a.Values, b.Values);
 
-        if (values1.Length != values2.Length)
-        {
-            return 0;
-        }
-
-        double dot = 0, mag1 = 0, mag2 = 0;
-
-        for (int i = 0; i < values1.Length; i++)
-        {
-            dot += values1[i] * values2[i];
-            mag1 += values1[i] * values1[i];
-            mag2 += values2[i] * values2[i];
-        }
-
-        var denominator = Math.Sqrt(mag1) * Math.Sqrt(mag2);
-        return denominator > 0 ? dot / denominator : 0;
-    }
 
     private const string DefaultMapPrompt = """
         Summarize the following content in 2-3 sentences, focusing on the main topics and key information.

@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Utilities;
 using System.Text.Json;
 using FluxIndex.Cache.Redis.Configuration;
 using FluxIndex.Core.Application.Interfaces;
@@ -693,21 +694,9 @@ public partial class RedisCacheStore : ICacheStore, IDisposable
         }
     }
 
-    private static float CalculateCosineSimilarity(float[] a, float[] b)
-    {
-        if (a.Length != b.Length) return 0;
+    private static float CalculateCosineSimilarity(float[] a, float[] b) =>
+        VectorMathUtilities.CosineSimilarity(a, b);
 
-        float dotProduct = 0, normA = 0, normB = 0;
-        for (int i = 0; i < a.Length; i++)
-        {
-            dotProduct += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
-        }
-
-        var denominator = Math.Sqrt(normA) * Math.Sqrt(normB);
-        return denominator > 0 ? (float)(dotProduct / denominator) : 0;
-    }
 
     public void Dispose()
     {

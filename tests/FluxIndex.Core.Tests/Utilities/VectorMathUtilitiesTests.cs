@@ -20,6 +20,41 @@ public class VectorMathUtilitiesTests
         Assert.InRange(result, 0.999f, 1.001f);
     }
 
+    // Nine private copies, some accumulating in double, were replaced by this one: on embedding-sized vectors the single-precision
+    // result has to stay within a few millionths of a double-precision reference, or a threshold comparison could move.
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(0.8)]
+    [InlineData(0.99)]
+    public void CosineSimilarity_On1024DimensionalVectors_StaysCloseToADoublePrecisionReference(double correlation)
+    {
+        var random = new Random(20261028);
+        for (var pair = 0; pair < 100; pair++)
+        {
+            var a = new float[1024];
+            var b = new float[1024];
+            for (var i = 0; i < a.Length; i++)
+            {
+                a[i] = (float)Gaussian(random);
+                b[i] = (float)(correlation * a[i] + Math.Sqrt(1 - correlation * correlation) * Gaussian(random));
+            }
+
+            double dot = 0, na = 0, nb = 0;
+            for (var i = 0; i < a.Length; i++)
+            {
+                dot += (double)a[i] * b[i];
+                na += (double)a[i] * a[i];
+                nb += (double)b[i] * b[i];
+            }
+
+            var reference = dot / (Math.Sqrt(na) * Math.Sqrt(nb));
+            Assert.InRange(Math.Abs(VectorMathUtilities.CosineSimilarity(a, b) - reference), 0.0, 5e-6);
+        }
+    }
+
+    private static double Gaussian(Random random) =>
+        Math.Sqrt(-2.0 * Math.Log(1.0 - random.NextDouble())) * Math.Cos(2.0 * Math.PI * random.NextDouble());
+
     [Fact]
     public void CosineSimilarity_OrthogonalVectors_ReturnsZero()
     {

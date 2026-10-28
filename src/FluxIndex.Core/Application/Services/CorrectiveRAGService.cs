@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -597,25 +598,9 @@ public partial class CorrectiveRAGService : ICorrectiveRAGService
         return queryTerms.Where(term => contentLower.Contains(term)).ToList();
     }
 
-    private static double CalculateCosineSimilarity(float[] v1, float[] v2)
-    {
-        if (v1.Length != v2.Length || v1.Length == 0)
-            return 0;
+    private static double CalculateCosineSimilarity(float[] v1, float[] v2) =>
+        VectorMathUtilities.CosineSimilarity(v1, v2);
 
-        double dotProduct = 0;
-        double mag1 = 0;
-        double mag2 = 0;
-
-        for (int i = 0; i < v1.Length; i++)
-        {
-            dotProduct += v1[i] * v2[i];
-            mag1 += v1[i] * v1[i];
-            mag2 += v2[i] * v2[i];
-        }
-
-        var magnitude = Math.Sqrt(mag1) * Math.Sqrt(mag2);
-        return magnitude > 0 ? dotProduct / magnitude : 0;
-    }
 
     private static string GenerateGradeExplanation(
         DocumentRelevanceGrade grade, double relevanceScore, double semanticSimilarity, double keywordScore)

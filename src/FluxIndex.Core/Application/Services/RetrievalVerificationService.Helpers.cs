@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Utilities;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -137,21 +138,9 @@ public partial class RetrievalVerificationService
         return Convert.ToBase64String(hash);
     }
 
-    private static double CalculateCosineSimilarity(float[] a, float[] b)
-    {
-        if (a == null || b == null || a.Length != b.Length) return 0;
+    private static double CalculateCosineSimilarity(float[]? a, float[]? b) =>
+        VectorMathUtilities.CosineSimilarity(a, b);
 
-        double dotProduct = 0, normA = 0, normB = 0;
-        for (int i = 0; i < a.Length; i++)
-        {
-            dotProduct += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
-        }
-
-        var denominator = Math.Sqrt(normA) * Math.Sqrt(normB);
-        return denominator > 0 ? dotProduct / denominator : 0;
-    }
 
     private static double CalculateKeywordMatch(string query, string content)
     {

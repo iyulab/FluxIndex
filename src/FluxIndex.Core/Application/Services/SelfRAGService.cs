@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -883,25 +884,9 @@ public partial class SelfRAGService : ISelfRAGService
         return union > 0 ? (double)intersection / union : 0;
     }
 
-    private static double CosineSimilarity(float[] a, float[] b)
-    {
-        if (a.Length != b.Length || a.Length == 0)
-            return 0;
+    private static double CosineSimilarity(float[] a, float[] b) =>
+        VectorMathUtilities.CosineSimilarity(a, b);
 
-        double dotProduct = 0;
-        double normA = 0;
-        double normB = 0;
-
-        for (int i = 0; i < a.Length; i++)
-        {
-            dotProduct += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
-        }
-
-        var denominator = Math.Sqrt(normA) * Math.Sqrt(normB);
-        return denominator > 0 ? dotProduct / denominator : 0;
-    }
 
     private static RefinementAction CreateRefinementAction(RefinementActionType type, string description)
     {
