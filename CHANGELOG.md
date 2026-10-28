@@ -22,6 +22,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - Re-pinned sibling package(s) `FileFlux` 0.65.3 -> 0.66.0.
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.136.0 -> 0.137.0, `LMSupply.Generator` 0.136.0 -> 0.137.0, `LMSupply.Reranker` 0.136.0 -> 0.137.0. LMSupply 0.137.0 changes the token estimate it falls back to when a local server reports no usage: Korean text now counts about 2.5x more tokens than before, English slightly fewer, digits more.
 - Re-pinned third-party packages: 19 .NET servicing pins (Microsoft.EntityFrameworkCore, Microsoft.Extensions) 10.0.13 -> 10.0.14 (the 10.0.14 security servicing release); `System.CommandLine` 2.0.13 -> 2.0.14.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.137.0 -> 0.138.0, `LMSupply.Generator` 0.137.0 -> 0.138.0, `LMSupply.Reranker` 0.137.0 -> 0.138.0.
 
 ## [0.104.0] - 2026-10-24
 
