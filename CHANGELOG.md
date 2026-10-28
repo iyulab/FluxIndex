@@ -13,6 +13,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   Same formula and the same answer for a null, empty, mismatched or zero vector (0); the copies that accumulated in `double` now accumulate
   in `float` like the shared one, so a similarity can differ in the last digits (at most about 1.3e-6 on 1,024-dimensional vectors).
 
+### Dependencies
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.138.0 -> 0.139.0, `LMSupply.Generator` 0.138.0 -> 0.139.0, `LMSupply.Reranker` 0.138.0 -> 0.139.0.
+
 ## [0.105.0] - 2026-10-28
 
 ### Changed
