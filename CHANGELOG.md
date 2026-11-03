@@ -19,6 +19,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Dependencies
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.138.0 -> 0.139.0, `LMSupply.Generator` 0.138.0 -> 0.139.0, `LMSupply.Reranker` 0.138.0 -> 0.139.0.
 - Re-pinned third-party packages: `StackExchange.Redis` 3.4.20 -> 3.4.29.
+- Re-pinned sibling package(s) `FluxGuard.Remote` 0.26.0 -> 0.27.0.
 
 ## [0.105.0] - 2026-10-28
 
