@@ -21,6 +21,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - Re-pinned third-party packages: `StackExchange.Redis` 3.4.20 -> 3.4.29.
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.26.0 -> 0.27.0.
 - Re-pinned sibling package(s) `FileFlux` 0.66.0 -> 0.67.0.
+- Re-pinned third-party packages: `Neo4j.Driver` 6.4.0 -> 6.5.0, `StackExchange.Redis` 3.4.29 -> 3.4.31.
 
 ## [0.105.0] - 2026-10-28
 
