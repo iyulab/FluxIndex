@@ -292,7 +292,7 @@ public static class MetadataHelper
                cm.CharacterCount == 0 &&
                cm.SentenceCount == 0 &&
                cm.ReadabilityScore == 0.0 &&
-               cm.Language == "ko" &&
+               string.IsNullOrEmpty(cm.Language) &&
                cm.Keywords.Count == 0 &&
                cm.Entities.Count == 0 &&
                cm.Topics.Count == 0 &&

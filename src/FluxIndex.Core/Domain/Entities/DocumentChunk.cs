@@ -168,7 +168,8 @@ public class ChunkMetadata
     public int CharacterCount { get; set; }
     public int SentenceCount { get; set; }
     public double ReadabilityScore { get; set; }
-    public string Language { get; set; } = "ko";
+    /// <summary>Language code of the chunk text (for example <c>"en"</c>, <c>"ko"</c>); empty until the caller sets it. It used to default to <c>"ko"</c>, which a store wrote next to any other metadata the caller had set, so English chunks came back labelled Korean.</summary>
+    public string Language { get; set; } = string.Empty;
 
     // 의미적 메타데이터
     public List<string> Keywords { get; set; } = new();
