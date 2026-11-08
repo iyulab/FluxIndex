@@ -24,6 +24,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - Re-pinned sibling package(s) `FileFlux` 0.66.0 -> 0.67.0.
 - Re-pinned third-party packages: `Neo4j.Driver` 6.4.0 -> 6.5.0, `StackExchange.Redis` 3.4.29 -> 3.4.31.
 - Re-pinned third-party packages: `Neo4j.Driver` 6.5.0 -> 6.5.1.
+- Re-pinned sibling package(s) `FileFlux` 0.67.0 -> 0.68.0, `FluxImprover` 0.23.0 -> 0.24.0.
 
 ## [0.105.0] - 2026-10-28
 
