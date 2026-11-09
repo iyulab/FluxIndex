@@ -45,12 +45,22 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
+# Nothing by default; every job below asks for what it needs.
+permissions: {}
+
+# The push to nuget.org is not made here. This workflow builds, tests and packs, uploads the packages as an artifact and asks the
+# organization's central publisher (iyulab/nuget-publish) to push them; that repository holds the only trusted-publishing policy
+# and checks this repository, this workflow file and the package ids against an allowlist. No NuGet credential lives here.
+# The solution-wide pack also emits the command-line tool (FluxIndex.CLI, its own version line), so that id belongs on the allowlist too.
 jobs:
-  build-test-release:
+  pack:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # tag + GitHub release
+      contents: read
     timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.decide.outputs.publish }}
 
     steps:
     - name: Checkout
@@ -155,35 +165,27 @@ jobs:
           echo "✅ Version $VERSION is new"
         fi
 
-    # Publish to NuGet (only if version doesn't exist or force_publish is true)
-    - name: Publish to NuGet
-      if: |
-        steps.changes.outputs.should_run == 'true' &&
-        (steps.version_check.outputs.version_exists == 'false' || github.event.inputs.force_publish == 'true')
+    # Hand the packages over only if the version doesn't exist or force_publish is true
+    - name: Decide whether to publish
+      id: decide
       run: |
-        echo "🚀 Publishing packages to NuGet..."
-        for package in ./packages/*.nupkg; do
-          echo "Publishing $(basename $package)..."
-          dotnet nuget push $package \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
-        done
+        if [ "${{ steps.version_check.outputs.version_exists }}" == "false" ] || [ "${{ github.event.inputs.force_publish }}" == "true" ]; then
+          echo "publish=true" >> $GITHUB_OUTPUT
+        else
+          echo "publish=false" >> $GITHUB_OUTPUT
+        fi
 
-    # Release notes = this version's CHANGELOG.md section. Every iyulab publish workflow carries this awk program
-    # verbatim; change it in all of them or in none.
-    - name: GitHub release (notes = this version's CHANGELOG section)
-      if: |
-        steps.changes.outputs.should_run == 'true' &&
-        (steps.version_check.outputs.version_exists == 'false' || github.event.inputs.force_publish == 'true')
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        VERSION=$(grep -oP '<(Version|VersionPrefix)>\K[^<]+' Directory.Build.props | head -1)
-        if gh release view "v$VERSION" >/dev/null 2>&1; then echo "Release v$VERSION already exists"; exit 0; fi
-        awk -v v="$VERSION" '/^## /{if(p)exit;h=$0;sub(/^## +\[?v?/,"",h);c=substr(h,length(v)+1,1);if(index(h,v)==1&&(c==""||c=="]"||c==" "||c=="\t")){p=1;next}}p&&(n||$0!~/^[ \t]*$/){l[++n]=$0}END{while(n&&(l[n]~/^[ \t]*$/||l[n]~/^---+$/))n--;for(i=1;i<=n;i++)print l[i]}' CHANGELOG.md > release-notes.md
-        if [ ! -s release-notes.md ]; then echo "::error::CHANGELOG.md has no section for $VERSION"; exit 1; fi
-        gh release create "v$VERSION" --title "v$VERSION" --notes-file release-notes.md --target "$GITHUB_SHA"
+    # Only .nupkg and .snupkg files: the central publisher refuses an artifact that holds anything else.
+    - name: Upload packages
+      if: steps.decide.outputs.publish == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: nuget-packages
+        path: |
+          ./packages/*.nupkg
+          ./packages/*.snupkg
+        if-no-files-found: error
+        retention-days: 1
 
     # Build summary
     - name: Summary
@@ -195,7 +197,7 @@ jobs:
         echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
         echo "| 📦 Version | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| 🏁 Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| 🚀 Published | ${{ (steps.version_check.outputs.version_exists == 'false' || github.event.inputs.force_publish == 'true') && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🚀 Handed to the publisher | ${{ steps.decide.outputs.publish == 'true' && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
         echo "| 🎯 .NET | ${{ env.DOTNET_VERSION }} |" >> $GITHUB_STEP_SUMMARY
         echo "| 🔧 Config | ${{ env.CONFIGURATION }} |" >> $GITHUB_STEP_SUMMARY
         echo "| 🌿 Branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
@@ -205,3 +207,35 @@ jobs:
         if [[ "${{ steps.version_check.outputs.version_exists }}" == "true" && "${{ github.event.inputs.force_publish }}" != "true" ]]; then
           echo "ℹ️ **Note**: Version already exists on NuGet, skipped publishing" >> $GITHUB_STEP_SUMMARY
         fi
+
+  # Asks the central publisher to push the packages and waits for its answer: this job succeeds only when they are on nuget.org.
+  # Until the repository is on the publisher's allowlist the call is refused and the jobs after it do not run.
+  publish:
+    needs: pack
+    if: ${{ needs.pack.outputs.publish == 'true' }}
+    uses: iyulab/nuget-publish/.github/workflows/request.yml@2166748abf716fb58855228f65fc6b8f78c2780f # main
+    permissions: {}
+    secrets: inherit
+
+  # The tag and the GitHub release exist only for a version that reached nuget.org.
+  release:
+    needs: [pack, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # tag + GitHub release
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    # Release notes = this version's CHANGELOG.md section. Every iyulab publish workflow carries this awk program
+    # verbatim; change it in all of them or in none.
+    - name: GitHub release (notes = this version's CHANGELOG section)
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        VERSION=$(grep -oP '<(Version|VersionPrefix)>\K[^<]+' Directory.Build.props | head -1)
+        if gh release view "v$VERSION" >/dev/null 2>&1; then echo "Release v$VERSION already exists"; exit 0; fi
+        awk -v v="$VERSION" '/^## /{if(p)exit;h=$0;sub(/^## +\[?v?/,"",h);c=substr(h,length(v)+1,1);if(index(h,v)==1&&(c==""||c=="]"||c==" "||c=="\t")){p=1;next}}p&&(n||$0!~/^[ \t]*$/){l[++n]=$0}END{while(n&&(l[n]~/^[ \t]*$/||l[n]~/^---+$/))n--;for(i=1;i<=n;i++)print l[i]}' CHANGELOG.md > release-notes.md
+        if [ ! -s release-notes.md ]; then echo "::error::CHANGELOG.md has no section for $VERSION"; exit 1; fi
+        gh release create "v$VERSION" --title "v$VERSION" --notes-file release-notes.md --target "$GITHUB_SHA"
