@@ -78,4 +78,33 @@ public sealed class RecordedIdentityTests : IAsyncLifetime
         await next.StoreAsync(Chunk(), ct);
         (await next.CountAsync(ct)).Should().Be(1);
     }
+
+    /// <summary>
+    /// The identity table is created on first use. On a fresh database many first writes arrive together, and PostgreSQL does not
+    /// make concurrent "CREATE TABLE IF NOT EXISTS" of one name safe: a loser can fail with a unique violation on the catalogue
+    /// (23505) instead of the "already exists" no-op. Every one of them must succeed.
+    /// </summary>
+    [Fact]
+    public async Task ManyFirstWritesOnAFreshDatabase_AllSucceed_AndRecordOneIdentity()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const int Callers = 16;
+        using var start = new ManualResetEventSlim(false);
+
+        var writes = Enumerable.Range(0, Callers).Select(_ => Task.Run(async () =>
+        {
+            var store = Scope("model-a");
+            start.Wait(ct);
+            await store.StoreAsync(Chunk(), ct);
+        }, ct)).ToList();
+
+        // Let every caller reach the gate, then release them together.
+        await Task.Delay(500, ct);
+        start.Set();
+
+        await Task.WhenAll(writes);
+        (await Scope("model-a").CountAsync(ct)).Should().Be(Callers);
+        (await Scope("model-b").Awaiting(s => s.StoreAsync(Chunk(), ct)).Should().ThrowAsync<EmbeddingModelMismatchException>())
+            .Which.StoredIdentity.Model.Should().Be("model-a");
+    }
 }

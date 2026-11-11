@@ -42,10 +42,33 @@ public class PostgreSQLVectorStore : VectorStoreBase
     private async Task<FluxIndexDbContext> OpenIdentityTableAsync(CancellationToken cancellationToken)
     {
         var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        await context.Database.ExecuteSqlRawAsync(
-            "CREATE TABLE IF NOT EXISTS fluxindex_vector_identity (store_key text PRIMARY KEY, identity_record text NOT NULL)",
-            cancellationToken);
-        return context;
+        try
+        {
+            // The table is created on first use, so the first writes on a new database arrive together. "IF NOT EXISTS" is
+            // not safe against that: two sessions creating one relation at once can fail with a unique violation on the
+            // catalogue (23505) rather than the no-op. Once the table exists nothing needs the lock, so only the creating
+            // path takes it (the lock every FluxIndex DDL shares); it is checked again inside, where the statement is a no-op
+            // for every caller but the first.
+            var exists = await context.Database
+                .SqlQuery<bool>($"SELECT to_regclass('fluxindex_vector_identity') IS NOT NULL AS \"Value\"")
+                .SingleAsync(cancellationToken);
+            if (!exists)
+            {
+                await PostgresSchemaLock.RunAsync(
+                    context.Database.GetDbConnection(),
+                    () => context.Database.ExecuteSqlRawAsync(
+                        "CREATE TABLE IF NOT EXISTS fluxindex_vector_identity (store_key text PRIMARY KEY, identity_record text NOT NULL)",
+                        cancellationToken),
+                    cancellationToken);
+            }
+
+            return context;
+        }
+        catch
+        {
+            await context.DisposeAsync();
+            throw;
+        }
     }
 
     /// <inheritdoc />
