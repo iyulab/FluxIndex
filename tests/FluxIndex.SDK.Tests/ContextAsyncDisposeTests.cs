@@ -6,8 +6,9 @@ namespace FluxIndex.SDK.Tests;
 
 /// <summary>
 /// A service registered through <c>ConfigureServices</c> that implements only <see cref="IAsyncDisposable"/> cannot be
-/// released by a synchronous container dispose: the container throws on it and skips the registrations after it.
-/// <see cref="FluxIndexContext.Dispose()"/> catches and logs that throw, so the abort was invisible. <see cref="FluxIndexContext.DisposeAsync"/> releases both.
+/// released by a synchronous container dispose: the container throws on it (and, through Microsoft.Extensions.DependencyInjection 10.x,
+/// skips the registrations after it). <see cref="FluxIndexContext.Dispose()"/> catches and logs that throw, so the failure was invisible.
+/// <see cref="FluxIndexContext.DisposeAsync"/> releases both.
 /// </summary>
 public class ContextAsyncDisposeTests
 {
@@ -54,15 +55,17 @@ public class ContextAsyncDisposeTests
     }
 
     [Fact]
-    public void SyncDispose_CannotReleaseAnAsyncOnlyService_AndStopsThere()
+    public void SyncDispose_CannotReleaseAnAsyncOnlyService()
     {
         // The control: this is why DisposeAsync exists. If this ever turns green-for-release, the container changed.
-        var (context, asyncOnly, sync) = Build();
+        // Only the invariant that holds on every container version is pinned: the async-only service is not released.
+        // Whether the container then carries on with the registrations after it differs - it stops there through
+        // Microsoft.Extensions.DependencyInjection 10.x and disposes the rest from 11.0 - so that half is not asserted.
+        var (context, asyncOnly, _) = Build();
 
         context.Dispose();
 
-        asyncOnly.Disposed.Should().BeFalse();
-        sync.Disposed.Should().BeFalse("the synchronous container dispose threw at the async-only service first");
+        asyncOnly.Disposed.Should().BeFalse("a synchronous container dispose throws at an async-only service instead of releasing it");
     }
 
     [Fact]
