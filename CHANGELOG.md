@@ -5,6 +5,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Dependencies
+- Re-pinned sibling package(s) `FluxImprover` 0.24.0 -> 0.24.1.
+
+---
+
 ## [0.106.1] - 2026-11-12
 
 ### Fixed
