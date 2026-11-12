@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.106.1] - 2026-11-12
 
 ### Fixed
 - **Many first writes at once on a new PostgreSQL database no longer fail one or more callers with `23505 duplicate key value violates unique constraint "pg_type_typname_nsp_index"`.** The table that records the vectors' embedding identity is created on first use, and concurrent `CREATE TABLE IF NOT EXISTS` of one name is not safe in PostgreSQL. Creation now runs under the schema lock every other FluxIndex DDL already takes; once the table exists no lock is taken. A failure while opening the table no longer leaks the context it opened.
