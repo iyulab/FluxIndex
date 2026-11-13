@@ -13,6 +13,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Dependencies
 - Re-pinned sibling package(s) `FluxImprover` 0.24.0 -> 0.24.1.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.141.0 -> 0.142.0, `LMSupply.Generator` 0.141.0 -> 0.142.0, `LMSupply.Reranker` 0.141.0 -> 0.142.0.
 
 ---
 
