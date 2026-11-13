@@ -7,6 +7,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Fixed
+- **`UsePostgreSQL(...).AddPostgreSQLStorage()` with an embedding service that is not 1536-dimensional now works: the pgvector column of the vector store and of the PostgreSQL semantic cache is the size of the bound embedding service.** Until now the builder left both at 1536 and offered no setting, so a 384-, 768-, 1024- or 3072-dimensional service created `vector(1536)` tables and its first write and every search failed with `22000: expected 1536 dimensions, not N`. A service that cannot say its size yet (an embedder whose model is not loaded and whose size was never declared) keeps the configured size, as before. A store already created at 1536 under a service of another size never worked, so there is nothing to migrate; a `PostConfigure<PostgreSQLOptions>` workaround that sets the size keeps working and still wins.
+
 ### Dependencies
 - Re-pinned sibling package(s) `FluxImprover` 0.24.0 -> 0.24.1.
 

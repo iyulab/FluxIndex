@@ -108,7 +108,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
 - **Storage** — builder `Use*` + the package's `Add*Storage()` (`Build()` throws if one is missing): SQLite
   (`UseSQLite`, `AddSQLiteStorage`), PostgreSQL + pgvector (`UsePostgreSQL`, `AddPostgreSQLStorage`), Qdrant (`UseQdrant`,
   `AddQdrantStorage`), Neo4j graph (`UseNeo4j`, `AddNeo4jStorage`). Plain DI: `AddSQLiteVectorStore`,
-  `AddPostgreSQLVectorStore`, `AddQdrantVectorStore`, `AddNeo4jGraphStore`.
+  `AddPostgreSQLVectorStore`, `AddQdrantVectorStore`, `AddNeo4jGraphStore`. On the builder path the pgvector column size
+  (vector store and PostgreSQL semantic cache) is the size of the bound embedding service; plain DI takes it from
+  `PostgreSQLOptions.EmbeddingDimensions` (default 1536).
 - **Redis cache** — builder `UseRedisCache(connection)` **plus** `AddRedisStorage()`; plain DI `AddRedisCacheStore` /
   `AddRedisSemanticCache`.
 - **Semantic cache** (opt-in) — `FluxIndexContext.SearchAsync` answers a query similar to an earlier one from an

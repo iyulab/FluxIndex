@@ -48,6 +48,17 @@ public static class FluxIndexContextBuilderExtensions
             services.AddPostgreSQLVectorStore(
                 options.VectorStore.ConnectionString,
                 autoMigrate: options.VectorStore.EnableAutoMigration);
+
+            // The builder has no knob for the vector size, so it comes from the embedding service bound to the
+            // context - the same source the Qdrant builder path takes its size from. Left at the 1536 default,
+            // a service of another size got vector(1536) tables and a first write that failed with
+            // "22000: expected 1536 dimensions, not N".
+            services.AddOptions<PostgreSQLOptions>()
+                .Configure<IServiceProvider>((store, sp) =>
+                {
+                    if (BoundEmbeddingDimension(sp) is { } dimension)
+                        store.EmbeddingDimensions = dimension;
+                });
         }
 
         // The keyword leg is resolved independently of the vector provider. Gating it on
@@ -108,10 +119,40 @@ public static class FluxIndexContextBuilderExtensions
                     cacheOptions.SimilarityThreshold = similarityThreshold;
             });
 
+            // The cache stores the vectors of the same embedding service, so its column follows the bound
+            // service's size too (SemanticCacheOptions.EmbeddingDimensions is only the fallback).
+            services.AddOptions<PostgresCacheOptions>()
+                .Configure<IServiceProvider>((cache, sp) =>
+                {
+                    if (BoundEmbeddingDimension(sp) is { } dimension)
+                        cache.EmbeddingDimensions = dimension;
+                });
+
             // Same reason as the graph store above: the cache migrates from a hosted service that
             // the builder path never starts.
             services.AddSingleton<IStorageInitializer>(sp =>
                 sp.GetRequiredService<Cache.PostgresCacheSchemaInitializer>());
+        }
+    }
+
+    /// <summary>
+    /// The vector size of the embedding service bound to the context, or null when none is bound, the placeholder
+    /// service of a keyword-only context reports 0, or the service cannot say yet (an embedder whose model is not
+    /// loaded and whose size was never declared throws) - the configured size then stays, as it did before.
+    /// </summary>
+    private static int? BoundEmbeddingDimension(IServiceProvider services)
+    {
+        if (services.GetService<IEmbeddingService>() is not { } embeddingService)
+            return null;
+
+        try
+        {
+            var dimension = embeddingService.GetEmbeddingDimension();
+            return dimension > 0 ? dimension : null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
         }
     }
 

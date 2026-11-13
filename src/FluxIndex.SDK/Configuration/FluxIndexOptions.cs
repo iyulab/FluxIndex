@@ -275,6 +275,11 @@ public class SemanticCacheOptions
     /// <summary>
     /// 임베딩 차원 수 (pgvector 인덱스용)
     /// </summary>
+    /// <remarks>
+    /// The PostgreSQL builder path takes the size from the embedding service bound to the context
+    /// (<c>UseEmbeddingService</c>) and uses this value only when that service reports none (a keyword-only
+    /// context, or an embedder that cannot say its size before its model loads).
+    /// </remarks>
     public int EmbeddingDimensions { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
 
     /// <summary>

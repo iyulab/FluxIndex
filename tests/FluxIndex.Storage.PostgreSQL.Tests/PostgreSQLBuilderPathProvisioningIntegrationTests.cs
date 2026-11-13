@@ -1,6 +1,8 @@
 using System.Threading.Tasks;
 using AwesomeAssertions;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.SDK;
+using FluxIndex.SDK.Services;
 using FluxIndex.SDK.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -99,7 +101,86 @@ public class PostgreSQLBuilderPathProvisioningIntegrationTests : IAsyncLifetime
         (await RegClassAsync(connectionString, "public.chunk_hierarchies")).Should().NotBeNull();
     }
 
-    private static void RunBuildProvisioning(string connectionString, bool enableVectorAutoMigration = true)
+    /// <summary>
+    /// Issue: a builder-configured store on an embedding service of another size created vector(1536) tables and the first
+    /// write failed with 22000. The size of every vector column the builder creates follows the bound service.
+    /// </summary>
+    [Theory]
+    [InlineData(384)]
+    [InlineData(1024)]
+    public async Task BuildProvisioning_WithAnEmbeddingServiceOfAnotherSize_CreatesVectorColumnsOfThatSize(int dimensions)
+    {
+        var connectionString = _container.GetConnectionString();
+
+        RunBuildProvisioning(
+            connectionString,
+            configure: s => s.AddSingleton<IEmbeddingService>(new InMemoryEmbeddingService(dimensions)));
+
+        (await VectorSizeAsync(connectionString, "vectors")).Should().Be(dimensions);
+        (await VectorSizeAsync(connectionString, "semantic_cache")).Should().Be(dimensions);
+    }
+
+    [Fact]
+    public async Task BuildProvisioning_WithAnEmbeddingServiceOfAnotherSize_TheFirstWriteAndSearchSucceed()
+    {
+        var connectionString = _container.GetConnectionString();
+        const int dimensions = 1024;
+
+        using var provider = BuildProvider(
+            connectionString,
+            s => s.AddSingleton<IEmbeddingService>(new InMemoryEmbeddingService(dimensions)));
+        foreach (var initializer in provider.GetServices<IStorageInitializer>())
+            initializer.InitializeSync(provider);
+
+        await using var scope = provider.CreateAsyncScope();
+        var store = scope.ServiceProvider.GetRequiredService<IVectorStore>();
+        var embedding = await provider.GetRequiredService<IEmbeddingService>().GenerateEmbeddingAsync("a chunk", TestContext.Current.CancellationToken);
+        var chunk = new FluxIndex.Core.Domain.Entities.DocumentChunk
+        {
+            Id = Guid.NewGuid().ToString(),
+            DocumentId = "doc-a",
+            ChunkIndex = 0,
+            Content = "a chunk",
+            Embedding = embedding,
+        };
+
+        var act = async () =>
+        {
+            await store.StoreAsync(chunk, TestContext.Current.CancellationToken);
+            await store.SearchAsync(embedding, 3, 0.0f, cancellationToken: TestContext.Current.CancellationToken);
+        };
+
+        await act.Should().NotThrowAsync("the vector column is the size of the embedding service, not 1536");
+    }
+
+    private static void RunBuildProvisioning(
+        string connectionString,
+        bool enableVectorAutoMigration = true,
+        Action<IServiceCollection>? configure = null)
+    {
+        using var provider = BuildProvider(connectionString, configure, enableVectorAutoMigration);
+
+        foreach (var initializer in provider.GetServices<IStorageInitializer>())
+        {
+            initializer.InitializeSync(provider);
+        }
+    }
+
+    private static async Task<int?> VectorSizeAsync(string connectionString, string table)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT atttypmod FROM pg_attribute WHERE attrelid = to_regclass(@t) AND attname = 'Embedding' AND NOT attisdropped",
+            connection);
+        command.Parameters.AddWithValue("t", table);
+        return await command.ExecuteScalarAsync() as int?;
+    }
+
+    private static ServiceProvider BuildProvider(
+        string connectionString,
+        Action<IServiceCollection>? configure = null,
+        bool enableVectorAutoMigration = true)
     {
         var options = new FluxIndexOptions();
 
@@ -114,14 +195,10 @@ public class PostgreSQLBuilderPathProvisioningIntegrationTests : IAsyncLifetime
 
         var services = new ServiceCollection();
         services.AddLogging();
+        configure?.Invoke(services);
         FluxIndexContextBuilderExtensions.RegisterPostgreSQLServices(services, options);
 
-        using var provider = services.BuildServiceProvider();
-
-        foreach (var initializer in provider.GetServices<IStorageInitializer>())
-        {
-            initializer.InitializeSync(provider);
-        }
+        return services.BuildServiceProvider();
     }
 
     private static async Task ExecuteAsync(string connectionString, string sql)
