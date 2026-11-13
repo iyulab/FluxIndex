@@ -1,0 +1,15 @@
+<Project>
+
+  <!--
+    sqlite-vec 0.1.7-alpha.2.1 fails the build of any executable whose PlatformTarget is not x64 or x86 (its
+    _CheckForUnsupportedPlatformTarget), and a self-contained publish for an ARM runtime identifier sets PlatformTarget to
+    arm64. The package ships native libraries for osx-arm64 and linux-arm64, so for those the check is wrong, and it lets
+    win-x86 through although no win-x86 native is shipped. FluxIndex turns the package's check off and applies its own
+    (FluxIndex.Storage.SQLite.targets), which names the runtime identifiers that really have no native library. A project
+    that sets EnableUnsupportedPlatformTargetCheck itself keeps its value.
+  -->
+  <PropertyGroup>
+    <EnableUnsupportedPlatformTargetCheck Condition="'$(EnableUnsupportedPlatformTargetCheck)' == ''">false</EnableUnsupportedPlatformTargetCheck>
+  </PropertyGroup>
+
+</Project>

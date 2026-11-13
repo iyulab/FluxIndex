@@ -29,6 +29,12 @@
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
   </ItemGroup>
 
+  <!-- Flows to every project that references the package, directly or through another package. -->
+  <ItemGroup>
+    <None Include="buildTransitive\FluxIndex.Storage.SQLite.props" Pack="true" PackagePath="buildTransitive\" />
+    <None Include="buildTransitive\FluxIndex.Storage.SQLite.targets" Pack="true" PackagePath="buildTransitive\" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
     <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />

@@ -1,0 +1,20 @@
+<Project>
+
+  <!--
+    The check that replaces sqlite-vec's own (see FluxIndex.Storage.SQLite.props): an executable built for a runtime
+    identifier the sqlite-vec package ships no native library for fails here, at build time, instead of loading no vector
+    extension at run time. Shipped natives: win-x64, linux-x64, linux-arm64, osx-x64, osx-arm64. A project that builds
+    without a runtime identifier is not checked (the native library is chosen when the process starts). Set
+    FluxIndexSqliteVecPlatformCheck to false to build anyway, for example when you supply the native library yourself.
+  -->
+  <Target Name="_FluxIndexSqliteVecCheckRuntimeIdentifier"
+          AfterTargets="_CheckForInvalidConfigurationAndPlatform"
+          Condition="'$(FluxIndexSqliteVecPlatformCheck)' != 'false' AND
+                     ('$(OutputType)' == 'Exe' OR '$(OutputType)' == 'WinExe') AND
+                     '$(RuntimeIdentifier)' != ''">
+    <Error Condition="'$(RuntimeIdentifier)' == 'win-x86' OR '$(RuntimeIdentifier)' == 'win-arm64' OR '$(RuntimeIdentifier)' == 'win-arm' OR
+                      '$(RuntimeIdentifier)' == 'linux-arm' OR '$(RuntimeIdentifier)' == 'linux-musl-arm' OR '$(RuntimeIdentifier)' == 'linux-musl-arm64'"
+           Text="FluxIndex.Storage.SQLite: the sqlite-vec package ships native libraries for win-x64, linux-x64, linux-arm64, osx-x64 and osx-arm64 only; there is none for '$(RuntimeIdentifier)'. Build for one of those, or set FluxIndexSqliteVecPlatformCheck to false if you supply the native library yourself." />
+  </Target>
+
+</Project>
