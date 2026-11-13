@@ -150,7 +150,7 @@ public partial class HybridSearchService : IHybridSearchService
         HybridSearchOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        if (!queries.Any())
+        if (queries.Count == 0)
             return Array.Empty<BatchHybridSearchResult>();
 
         options ??= new HybridSearchOptions();

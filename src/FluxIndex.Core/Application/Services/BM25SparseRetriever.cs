@@ -121,7 +121,7 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
         LogBM25SearchStarted(_logger, query);
 
         var searchTerms = TokenizeQuery(query, options);
-        if (!searchTerms.Any())
+        if (searchTerms.Count == 0)
             return Array.Empty<SparseSearchResult>();
 
         var results = new List<SparseSearchResult>();

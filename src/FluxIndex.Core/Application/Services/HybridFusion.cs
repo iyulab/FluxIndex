@@ -250,8 +250,8 @@ public static class HybridFusion
         var fusedResults = new Dictionary<string, HybridSearchResult>();
 
         // 점수 정규화를 위한 최대값 계산
-        var maxVectorScore = vectorResults.Any() ? vectorResults.Max(r => r.Score) : 1.0;
-        var maxSparseScore = sparseResults.Any() ? sparseResults.Max(r => r.Score) : 1.0;
+        var maxVectorScore = vectorResults.Count > 0 ? vectorResults.Max(r => r.Score) : 1.0;
+        var maxSparseScore = sparseResults.Count > 0 ? sparseResults.Max(r => r.Score) : 1.0;
 
         // 벡터 결과 처리
         for (int i = 0; i < vectorResults.Count; i++)
