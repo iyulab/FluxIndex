@@ -4,7 +4,6 @@ using FileFlux.Domain;
 using FluxIndex.Core.Application.Interfaces;
 using MetadataSchema = FluxIndex.Core.Application.Models.MetadataSchema;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using IFileFluxDocumentAnalysisService = FileFlux.IDocumentAnalysisService;
 
 namespace FluxIndex.Integrations.FileFlux;
@@ -30,10 +29,7 @@ public static class FileFluxServiceCollectionExtensions
         // FileFlux will use FluxIndex's OpenAI implementation for all LLM-based operations
         services.AddScoped<IFileFluxDocumentAnalysisService, FluxIndexTextCompletionAdapter>();
 
-        // Register FluxIndex's LLM refiner adapter for FileFlux
-        // This adapter bridges FluxIndex's ITextCompletionService to FileFlux's ILlmRefiner interface
-        // Enables LLM-based content refinement in the FileFlux 5-stage pipeline
-        services.TryAddScoped<ILlmRefiner, LlmRefinerAdapter>();
+        // LLM refinement: AddFileFlux() registers FileFlux's own ILlmRefiner, which reads the IDocumentAnalysisService above.
 
         // Configure FluxIndex-specific options
         if (configureOptions != null)
