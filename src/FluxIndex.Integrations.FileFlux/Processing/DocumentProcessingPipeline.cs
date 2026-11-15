@@ -839,7 +839,10 @@ public partial class DocumentProcessingPipeline
     {
         try
         {
-            await using var stream = File.OpenRead(filePath);
+            // Shared for read, write and delete: a document is most often read while its editor still has it open for writing.
+            await using var stream = new FileStream(
+                filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete,
+                bufferSize: 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
             var reader = new PdfDocumentReader();
             var rawContent = await reader.ExtractAsync(stream, Path.GetFileName(filePath), null, cancellationToken);
 

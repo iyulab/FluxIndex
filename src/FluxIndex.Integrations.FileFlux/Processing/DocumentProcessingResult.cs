@@ -58,7 +58,9 @@ public class ExtractionResult
     /// </summary>
     public static string ComputeFileHash(string filePath)
     {
-        using var stream = File.OpenRead(filePath);
+        // Shared for read, write and delete: a document is most often hashed while its editor still has it open for writing.
+        using var stream = new FileStream(
+            filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, bufferSize: 4096, FileOptions.SequentialScan);
         using var sha256 = SHA256.Create();
         var hashBytes = sha256.ComputeHash(stream);
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
