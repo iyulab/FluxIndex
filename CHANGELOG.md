@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.107.0] - 2026-11-16
 
 ### Fixed
 - **The FileFlux integration reads a source file that another program holds open for writing on Windows.** `ExtractionResult.ComputeFileHash` (also behind `HasSourceChanged` and the pipeline's source hash) and the PDF extraction opened the file asking to deny writers, so a document its editor had open was refused with «being used by another process»; they share the file for read, write and delete now. Nothing changes on macOS or Linux, which do not enforce share modes.
