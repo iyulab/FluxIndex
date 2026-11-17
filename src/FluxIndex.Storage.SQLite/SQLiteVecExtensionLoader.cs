@@ -15,7 +15,8 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
     private readonly SQLiteVecOptions _options;
 
     // 프로세스 수준 캐싱: filesystem probe 및 NativeLibrary.TryLoad는 프로세스 단위
-    private static volatile string? _cachedExtensionPath;
+    // Remembered per CustomExtensionPath (empty = the default resolver): stores of one process may name different files.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _cachedExtensionPaths = new();
     private static volatile bool _versionLogged;
     private static readonly object _pathResolveLock = new();
 
@@ -32,6 +33,7 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
     public async Task<bool> LoadExtensionAsync(SqliteConnection connection, CancellationToken cancellationToken = default)
     {
+        string? attemptedPath = null;
         try
         {
             // SQLite 확장 로딩 활성화 (per-connection: SQLite는 연결마다 확장 로드 필요)
@@ -43,6 +45,7 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
             // 확장 경로 해석 (프로세스 수준 캐싱: filesystem probe는 1회만 수행)
             var extensionPath = GetResolvedExtensionPath();
+            attemptedPath = extensionPath;
 
             if (extensionPath is not null)
             {
@@ -89,7 +92,9 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
         }
         catch (Exception ex)
         {
-            LogExtensionLoadFailed(_logger, ex, GetExtensionPath());
+            // Name the file that was actually tried: after a remembered path vanished, the default resolver points
+            // somewhere else (a package cache that an installed app does not have) and misdirects whoever reads the log.
+            LogExtensionLoadFailed(_logger, ex, attemptedPath ?? GetExtensionPath());
 
             if (_options.FallbackToInMemoryOnError)
             {
@@ -162,18 +167,21 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
     /// <returns>확장 파일 경로 (존재하지 않으면 null)</returns>
     private string? GetResolvedExtensionPath()
     {
-        var cached = _cachedExtensionPath;
-        if (cached is not null) return cached;
+        // The remembered path is tried first. It is only remembered while the file is there: a file removed since
+        // (temporary-file cleanup, quarantine, an update) is forgotten so the next load looks again - another
+        // extraction folder, CustomExtensionPath - instead of failing on the same missing file for the rest of the process.
+        var key = _options.CustomExtensionPath ?? string.Empty;
+        if (_cachedExtensionPaths.TryGetValue(key, out var cached) && File.Exists(cached)) return cached;
 
         lock (_pathResolveLock)
         {
-            cached = _cachedExtensionPath;
-            if (cached is not null) return cached;
+            if (_cachedExtensionPaths.TryGetValue(key, out cached) && File.Exists(cached)) return cached;
+            _cachedExtensionPaths.TryRemove(key, out _);
 
             var path = GetExtensionPath();
             if (File.Exists(path))
             {
-                _cachedExtensionPath = path;
+                _cachedExtensionPaths[key] = path;
                 return path;
             }
 

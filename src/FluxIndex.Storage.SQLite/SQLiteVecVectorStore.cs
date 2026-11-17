@@ -29,7 +29,11 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
     // 폴백용 in-memory 벡터 저장소 (sqlite-vec 실패 시 사용)
     private readonly Lazy<SQLiteVectorStore> _fallbackStore;
+    // Set by initialization only: false = this store never had the extension (the platform lacks it, or UseSQLiteVec is
+    // off). Once the extension has been loaded it never goes back to false - a later failure is that operation's failure.
     private bool _sqliteVecAvailable;
+    // The file the extension was first loaded from by this store; non-null = the store has used sqlite-vec.
+    private string? _loadedExtensionPath;
 
     /// <summary>
     /// Whether vec0 rows are read and written: the extension is loaded AND an embedding identity is bound. A keyword-only
@@ -636,8 +640,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 }
             }
 
-            // Recovery failed — disable sqlite-vec for this session
-            _sqliteVecAvailable = false;
+            // Recovery failed: the call fails. The store stays on sqlite-vec - switching it to the in-memory fallback
+            // would let StoreBatchAsync report this batch as stored while it lands in memory and is lost at exit.
             throw;
         }
         catch (Exception ex)
@@ -731,12 +735,15 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             await using var context = await OpenContextAsync(cancellationToken);
             return await SearchWithSQLiteVecAsync(context, queryEmbedding, topK, minScore, filters, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not SQLiteVecExtensionLostException
+            && (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested))
         {
             LogVectorSearchFailed(_logger, ex);
 
-            // 폴백 모드 활성화
-            if (_options.FallbackToInMemoryOnError)
+            // The fallback is for a store that never had the extension. Once this store has used it the vectors are on
+            // disk, and one failed query (a locked database, an I/O error) is that query's failure: answering it from
+            // the empty in-memory store - and from then on - would hide every stored vector.
+            if (_options.FallbackToInMemoryOnError && _loadedExtensionPath is null)
             {
                 LogFallbackRetry(_logger);
                 _sqliteVecAvailable = false;
@@ -1929,8 +1936,17 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 }
 
                 // 확장 로드 시도 (per-connection: SQLite 확장은 연결마다 로드 필요)
-                _sqliteVecAvailable = await _extensionLoader.LoadExtensionAsync(
+                var loadedNow = await _extensionLoader.LoadExtensionAsync(
                     (Microsoft.Data.Sqlite.SqliteConnection)connection, cancellationToken);
+
+                // A store that already used the extension does not become an in-memory store here (this runs again when
+                // the bound identity changes the vec0 table name): the vectors it wrote are on disk.
+                if (!loadedNow && _loadedExtensionPath is not null)
+                    throw new SQLiteVecExtensionLostException(_loadedExtensionPath);
+
+                _sqliteVecAvailable = loadedNow;
+                if (loadedNow)
+                    _loadedExtensionPath ??= _extensionLoader.GetExtensionPath();
 
                 // Everything below needs a bound identity (the vec0 table is named after its fingerprint). Keyword-only,
                 // there is none: the model tables above are the whole store.
@@ -2041,7 +2057,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 return false; // Recovered but data lost — caller should re-index
             }
 
-            _sqliteVecAvailable = false;
+            // Not recovered: unhealthy, and it keeps saying so. Switching to the fallback would turn the next check
+            // into "nothing to verify" (true) and send writes to memory.
             return false;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
@@ -2256,7 +2273,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         try
         {
             await context.Database.OpenConnectionAsync(cancellationToken);
-            await _extensionLoader.LoadExtensionAsync(
+            await LoadExtensionOnOpenConnectionAsync(
                 (Microsoft.Data.Sqlite.SqliteConnection)context.Database.GetDbConnection(), cancellationToken);
             return context;
         }
@@ -2265,6 +2282,28 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             await context.DisposeAsync();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Loads the extension on a connection of a store that already used it. A failure here is not «no sqlite-vec on this
+    /// platform» (what <see cref="SQLiteVecOptions.FallbackToInMemoryOnError"/> is for): the vectors are on disk, so it
+    /// surfaces as <see cref="SQLiteVecExtensionLostException"/> in either mode instead of a silent switch to memory.
+    /// </summary>
+    private async Task LoadExtensionOnOpenConnectionAsync(Microsoft.Data.Sqlite.SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        bool loaded;
+        try
+        {
+            loaded = await _extensionLoader.LoadExtensionAsync(connection, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not SQLiteVecExtensionLostException
+            && (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested))
+        {
+            throw new SQLiteVecExtensionLostException(_loadedExtensionPath ?? _extensionLoader.GetExtensionPath(), ex);
+        }
+
+        if (!loaded)
+            throw new SQLiteVecExtensionLostException(_loadedExtensionPath ?? _extensionLoader.GetExtensionPath());
     }
 
     /// <summary>

@@ -35,6 +35,13 @@ public class SQLiteVecOptions : SQLiteOptions
     /// <summary>
     /// sqlite-vec 확장 로드 실패 시 기존 in-memory 방식으로 폴백 여부
     /// </summary>
+    /// <remarks>
+    /// Covers a platform that never had the extension. A store that has already loaded it does not fall back later:
+    /// a connection that cannot load the file throws <see cref="SQLiteVecExtensionLostException"/>, because the vectors are
+    /// on disk and an in-memory store would split them from what the caller writes and reads next. For the same reason a
+    /// failed search, vector insert or health check on a store that uses the extension fails that call and leaves the
+    /// store on the database.
+    /// </remarks>
     public bool FallbackToInMemoryOnError { get; set; } = true;
 
     /// <summary>
