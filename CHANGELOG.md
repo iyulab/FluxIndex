@@ -13,6 +13,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **`CustomExtensionPath` is honoured by every store of a process.** The loader remembered one extension path for the whole process, so a second store naming a different file loaded the first store's file instead.
 - **A remembered extension path whose file has vanished is forgotten, so the next load looks again** (another extraction folder, `CustomExtensionPath`) instead of failing on the same file for the rest of the process, and the failure log names the file that was tried - it named the package-cache location of the default resolver, which an installed app does not have.
 
+### Dependencies
+- Re-pinned sibling package(s) `FileFlux` 0.69.0 -> 0.70.0.
+
 ## [0.107.0] - 2026-11-16
 
 ### Fixed
