@@ -63,7 +63,7 @@
     <PackageVersion Include="Neo4j.Driver" Version="6.5.1" />
     <!-- Vector Database -->
     <PackageVersion Include="Qdrant.Client" Version="1.20.0" />
-    <PackageVersion Include="Testcontainers.Qdrant" Version="4.16.0" />
+    <PackageVersion Include="Testcontainers.Qdrant" Version="4.17.0" />
   </ItemGroup>
   <!-- Shared ecosystem contract. Produced by its own repository so it can sit below every
        package that consumes it; consuming it here as a package rather than a project is what
@@ -79,18 +79,18 @@
   <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform) -->
   <ItemGroup>
     <!-- coverlet.MTP is coverlet.collector's MTP-native successor -->
-    <PackageVersion Include="coverlet.MTP" Version="10.1.0" />
+    <PackageVersion Include="coverlet.MTP" Version="10.1.1" />
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
-    <PackageVersion Include="Microsoft.Testing.Extensions.HangDump" Version="2.5.2" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.HangDump" Version="2.5.3" />
     <!-- 4.14.0 (2026-08-17): SSH.NET transitive floor lift. Testcontainers 4.13.0 and below
          pull SSH.NET 2025.1.0 (GHSA-q939-rpr3-3284, High: ScpClient recursive download allows
          arbitrary file write via server-controlled SCP filenames); 4.14.0 is the first release
          that moved its SSH.NET dependency to 2026.0.0. Test-only (Testcontainers.*.Tests
          projects), but this repo does not suppress a live High regardless of layer. -->
-    <PackageVersion Include="Testcontainers.Neo4j" Version="4.16.0" />
-    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
-    <PackageVersion Include="Testcontainers.Redis" Version="4.16.0" />
+    <PackageVersion Include="Testcontainers.Neo4j" Version="4.17.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.17.0" />
+    <PackageVersion Include="Testcontainers.Redis" Version="4.17.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.3" />
     <PackageVersion Include="Iyu.Conventions.Testing" Version="0.13.0" />
     <PackageVersion Include="Iyu.Conventions.Testing.Snippets" Version="0.13.0" />
