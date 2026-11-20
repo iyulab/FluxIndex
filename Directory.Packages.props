@@ -7,7 +7,7 @@
   <!-- Only packages directly referenced in *.csproj files -->
   <ItemGroup>
     <!-- Roslyn: compiles the README's and the provider guide's C# blocks in the SDK tests -->
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.12.0" />
     <!-- OpenAI .NET SDK: only for compiling the provider guide's own-implementation samples (SDK tests) -->
     <PackageVersion Include="OpenAI" Version="2.15.0" />
     <!-- FluxGuard (opt-in RAG security — FluxIndex.Integrations.FluxGuard) -->
@@ -54,7 +54,7 @@
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
-    <PackageVersion Include="StackExchange.Redis" Version="3.4.31" />
+    <PackageVersion Include="StackExchange.Redis" Version="3.4.35" />
     <PackageVersion Include="sqlite-vec" Version="0.1.7-alpha.2.1" />
     <!-- Explicit lift — Microsoft.Data.Sqlite 10.0.8 pulls SQLitePCLRaw 2.1.11
          (NU1903 high, GHSA-2m69-gcr7-jv3q); upstream 2.1.12 stable landed 2026-07-09. -->
