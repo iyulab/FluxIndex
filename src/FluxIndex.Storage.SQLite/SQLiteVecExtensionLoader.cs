@@ -198,6 +198,20 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
     {
         try
         {
+            // The table name carries the embedding fingerprint, not the width: an existing table of another width is
+            // recreated when empty and refused when it holds vectors (IF NOT EXISTS alone would keep it, and every
+            // insert would then fail with sqlite-vec's dimension mismatch).
+            var existingDimension = await ReadDeclaredDimensionAsync(connection, tableName, cancellationToken);
+            if (existingDimension is { } declared && declared != vectorDimension)
+            {
+                var stored = await CountStoredVectorsAsync(connection, tableName, cancellationToken);
+                if (stored > 0)
+                    throw new SQLiteVecDimensionMismatchException(tableName, declared, vectorDimension, stored);
+
+                LogVecTableWidthChanged(_logger, tableName, declared, vectorDimension);
+                return await RecreateVecTableAsync(connection, tableName, vectorDimension, options, cancellationToken);
+            }
+
             var sql = $"CREATE VIRTUAL TABLE IF NOT EXISTS {tableName} USING vec0(chunk_id TEXT PRIMARY KEY, embedding float[{vectorDimension}] {options})";
 
             using var command = connection.CreateCommand();
@@ -206,18 +220,44 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
             await command.ExecuteNonQueryAsync(cancellationToken);
 
             var key = $"{tableName}:{vectorDimension}";
-            if (_createdTables.TryAdd(key, 0))
+            if (_createdTables.TryAdd(key, 0) && existingDimension is null)
                 LogVecTableCreated(_logger, tableName, vectorDimension);
             else
                 LogVecTableEnsured(_logger, tableName);
 
             return true;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when (ex is not SQLiteVecDimensionMismatchException
+                                   && (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested))
         {
             LogVecTableCreateFailed(_logger, ex, tableName);
             return false;
         }
+    }
+
+    /// <summary>The <c>float[N]</c> width an existing vec0 table was declared with; null when the table does not exist.</summary>
+    private static async Task<int?> ReadDeclaredDimensionAsync(
+        SqliteConnection connection, string tableName, CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT sql FROM sqlite_master WHERE type='table' AND name=@name";
+        command.Parameters.AddWithValue("@name", tableName);
+        if (await command.ExecuteScalarAsync(cancellationToken) is not string ddl)
+            return null;
+
+        var match = System.Text.RegularExpressions.Regex.Match(ddl, @"float\s*\[\s*(\d+)\s*\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return match.Success && int.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out var width) ? width : null;
+    }
+
+    /// <summary>The number of vectors a vec0 table holds (its <c>_rowids</c> shadow table).</summary>
+    private static async Task<long> CountStoredVectorsAsync(
+        SqliteConnection connection, string tableName, CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        // tableName is a sanitized identifier (chunk_embeddings_{hex}).
+        command.CommandText = $"SELECT count(*) FROM \"{tableName}_rowids\"";
+        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken), System.Globalization.CultureInfo.InvariantCulture);
     }
 
     public async Task<bool> RecreateVecTableAsync(
@@ -341,6 +381,9 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
     [LoggerMessage(Level = LogLevel.Information, Message = "vec0 virtual table created: {TableName}, dimension: {Dimension}")]
     private static partial void LogVecTableCreated(ILogger logger, string tableName, int dimension);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 table {TableName} is empty and was declared at {TableDimension} dimensions; recreating it at {ConfiguredDimension}")]
+    private static partial void LogVecTableWidthChanged(ILogger logger, string tableName, int tableDimension, int configuredDimension);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "vec0 virtual table ensured (already exists): {TableName}")]
     private static partial void LogVecTableEnsured(ILogger logger, string tableName);
