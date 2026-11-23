@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.108.0] - 2026-11-23
 
 ### Fixed
 - **Breaking by observation: a sqlite-vec store that has used the extension no longer turns into an in-memory store when a later connection cannot load it - the operation throws `SQLiteVecExtensionLostException`.** With `FallbackToInMemoryOnError = true` (the default) a native file removed after the first load (a temporary-file cleanup, an antivirus quarantine, an update that swaps files) made the next connection fail, and the store silently moved to memory for the rest of the process: searches read a store that held none of what was on disk and writes were lost at exit while the caller was told they succeeded. The option keeps its meaning for a platform that never had the extension (the store runs without persistent vectors from its first operation). The exception names the file the extension was loaded from; with the option off the same failure now arrives as the same typed exception (the load error is its `InnerException`).
