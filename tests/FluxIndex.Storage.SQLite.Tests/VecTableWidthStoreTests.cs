@@ -91,7 +91,7 @@ public sealed class VecTableWidthStoreTests : IDisposable
 
     public void Dispose()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        FluxIndex.Tests.Shared.SqliteTestPools.Release(_databasePath);
         foreach (var file in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
         {
             try { File.Delete(file); } catch (IOException) { /* best effort */ }
