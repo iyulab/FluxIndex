@@ -17,6 +17,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Dependencies
 - Re-pinned sibling package(s) `FileFlux` 0.69.0 -> 0.70.0.
 - Re-pinned third-party packages: `StackExchange.Redis` 3.4.31 -> 3.4.35.
+- Re-pinned sibling package(s) `FileFlux` 0.70.0 -> 0.71.0, `FluxImprover` 0.24.1 -> 0.25.0.
 
 ## [0.107.0] - 2026-11-16
 

@@ -73,8 +73,8 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.70.0" />
-    <PackageVersion Include="FluxImprover" Version="0.24.1" />
+    <PackageVersion Include="FileFlux" Version="0.71.0" />
+    <PackageVersion Include="FluxImprover" Version="0.25.0" />
   </ItemGroup>
   <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform) -->
   <ItemGroup>
